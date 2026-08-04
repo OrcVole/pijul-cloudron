@@ -137,6 +137,53 @@ is raw bytes and the route decodes with `BASE64URL`), then `GET /register?token=
 `email_is_invalid` is `NULL` afterwards. This exercises the `sendmail` addon's wiring (the send must
 have succeeded for the row to survive) without needing to receive real mail.
 
+## Gate 3 risk, found ahead of time and NOT yet resolved: a live backup may race a live push
+
+Found while checking whether `sanakirja` (every repository's storage engine) needs `persistentDirs`
+plus a logical `backupCommand`/`restoreCommand`, the way gate 3's own doctrine requires for a store
+with background file churn. **This is not settled and needs an empirical test in gate 3, not a
+guess**, but the mechanism is real enough to write down now rather than risk losing it.
+
+**The mechanism, read from `sanakirja`'s own source (`environment/mod.rs`, `environment/muttxn.rs`):**
+a sanakirja file holds a small fixed number of "root pages" (2 by default in the crate's own
+example). A commit works by taking an OS **advisory** exclusive lock (`lock_exclusive`, a plain
+`flock`-family call on the `File`) on the *oldest* committed root page, then **overwriting that page
+in place** with a copy of the newest root, and unlocking. Readers take a **shared** advisory lock the
+same way. This is cooperative locking: it only serialises processes that call sanakirja's own lock
+methods.
+
+**Cloudron's backup is not one of those processes.** `cloudron-platform-facts.md` records that
+Cloudron copies `/app/data` *while the application is running*, and there is no reason to expect a
+filesystem-level copy (rsync-shaped or otherwise) to take a sanakirja-aware advisory lock on every
+repository file it walks past — it has no way to know sanakirja's locking convention exists. So there
+is a window, during the in-place root-page overwrite of an active commit, where an unsynchronised
+backup reading that same file could observe the page mid-write.
+
+**What is genuinely unknown, and must not be asserted either way without a test:**
+
+- Whether a torn root page corrupts the whole pristine store, or whether sanakirja's two-root-page
+  design degrades gracefully (the *other*, untouched root page still describing a valid, if slightly
+  older, committed state) — these are very different severities and the source alone does not settle
+  which one this is under an actual concurrent backup.
+- Whether the write itself, at a single 4096-byte page, lands atomically enough in practice that the
+  window is narrower than it looks on paper. Page-cache read/write interleaving between an mmap'd
+  writer and a `read()`-based copier is a genuinely subtle kernel question, not something to resolve
+  by reasoning from a crate's doc comment.
+
+**The gate 3 test this needs, precisely:** push changes to a repository in a tight loop from a
+background script while a `cloudron backup create` runs concurrently, several times, then restore
+from one of those backups and verify every pushed change is present and `pijul log`/`pijul clone`
+succeed without error on the restored repository. Run it enough times to make a narrow race window
+plausible to hit, not just once.
+
+**If the risk turns out real**, the fix is the one gate 3's own doctrine already names for this class
+of application: move `repositories/` onto a `persistentDirs` path (excluded from the raw filesystem
+walk) and back it up through `backupCommand`/`restoreCommand` with a logical export instead — which
+for Pijul most plausibly means iterating repositories and using the `pijul` client's own bundle/export
+path rather than a raw file copy, since that goes through the application's own consistency guarantees
+rather than around them. That is a real architectural change and deserves an ADR of its own if gate 3
+confirms it is needed; it is not something to build speculatively before the test says so.
+
 ## Gate 4 precondition, settled ahead of time: the primary store is memory-mapped
 
 Gate 4's own doctrine requires establishing, before measuring anything, whether the application's
