@@ -103,7 +103,18 @@ if [[ ${#FILES[@]} -eq 0 ]]; then
   echo "  (no publishable files found)"
 else
   echo "  ${#FILES[@]} files"
-  [[ -s "$ANON"  ]] && emit anon  "$(grep -IEnHf "$ANON"  "${FILES[@]}" 2>/dev/null)"
+  # The declared contactEmail is the one identity START-HERE.md §6 explicitly
+  # permits in the public repo ("no email addresses beyond the declared
+  # contactEmail"), so it legitimately matches the OrcadianVole pattern in
+  # CloudronManifest.json. Allowlisted by EXACT path and field, not by removing
+  # the pattern, so OrcadianVole still catches a leak anywhere else (field guide
+  # #87: allowlist by exact path with a visible count, never by weakening the
+  # denylist itself).
+  anon_hits="$(grep -IEnHf "$ANON" "${FILES[@]}" 2>/dev/null || true)"
+  allowed_hits="$(grep -E '^CloudronManifest\.json:[0-9]+:  "contactEmail":' <<<"$anon_hits" || true)"
+  anon_hits="$(comm -23 <(sort <<<"$anon_hits") <(sort <<<"$allowed_hits") 2>/dev/null || true)"
+  [[ -n "$allowed_hits" ]] && echo "  (allowlisted: declared contactEmail in CloudronManifest.json, $(wc -l <<<"$allowed_hits" | tr -d ' ') line)"
+  [[ -n "$anon_hits" ]] && emit anon "$anon_hits"
   [[ -s "$SHAPE" ]] && emit shape "$(grep -IEnHf "$SHAPE" "${FILES[@]}" 2>/dev/null)"
   [[ -s "$FIXED" ]] && emit token "$(grep -IFnHf "$FIXED" "${FILES[@]}" 2>/dev/null)"
 fi
