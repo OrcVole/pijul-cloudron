@@ -1,0 +1,12 @@
+.git
+.gitignore
+phase-notes/
+docs/
+test/
+README.md
+RETROSPECTIVE.md
+HARVEST.md
+.anonymize-list
+.env
+*.local
+node_modules/

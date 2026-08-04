@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Cloudron requires a square 256x256 icon. Upstream ships no logo file and a
+  deliberately blank favicon (href="data:image/x-icon;,"), so there is no asset to
+  copy. Their canonical mark is an inline SVG wordmark in the Nest's own header:
+  "pijul" set in Iosevka Term bold at letter-spacing 2.5, between two 1px rules,
+  in a 76x22 viewBox.
+
+  This reproduces that markup exactly, scaled and centred on the square canvas the
+  packaging docs ask for. The geometry, the font, the weight and the letter-spacing
+  are upstream's; the only thing added is the padding needed to make a wide wordmark
+  square, and a background so it reads on both light and dark dashboards.
+
+  Nothing is redrawn, recoloured or generated.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" fill="#1c1c1c"/>
+  <!-- 76x22 wordmark scaled 3x to 228x66, centred: x=(256-228)/2, y=(256-66)/2 -->
+  <g transform="translate(14, 95) scale(3)">
+    <line x1="0" y1="2" x2="76" y2="2" stroke="#f5f5f5" stroke-width="1"/>
+    <text x="5" y="15.5"
+          font-family="Iosevka Term, Consolas, Courier New, monospace"
+          font-size="12" font-weight="700" letter-spacing="2.5" fill="#f5f5f5">pijul</text>
+    <line x1="0" y1="19" x2="76" y2="19" stroke="#f5f5f5" stroke-width="1"/>
+  </g>
+</svg>

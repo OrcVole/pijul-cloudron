@@ -1,0 +1,9 @@
+# Local working record, never published.
+phase-notes/
+*-foundation.md
+RETROSPECTIVE.md
+HARVEST.md
+.anonymize-list
+.env
+*.local
+node_modules/
