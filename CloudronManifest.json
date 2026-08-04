@@ -1,0 +1,40 @@
+{
+  "id": "io.github.orcvole.pijul",
+  "manifestVersion": 2,
+  "title": "Pijul Nest",
+  "tagline": "Repository hosting for the Pijul version control system",
+  "version": "1.0.0",
+  "description": "file://DESCRIPTION.md",
+  "changelog": "file://CHANGELOG.md",
+  "website": "https://pijul.org",
+  "author": "OrcVole",
+  "contactEmail": "Most+github@OrcadianVole.com",
+  "packagerName": "OrcVole",
+  "packagerUrl": "https://github.com/OrcVole/pijul-cloudron",
+  "icon": "file://logo.png",
+  "tags": [
+    "git",
+    "hosting",
+    "project"
+  ],
+  "httpPort": 8000,
+  "healthCheckPath": "/",
+  "memoryLimit": 2147483648,
+  "minBoxVersion": "9.2.0",
+  "tcpPorts": {
+    "NEST_SSH_PORT": {
+      "title": "Pijul SSH port",
+      "description": "Port for pushing and pulling over SSH. The Nest serves SSH itself rather than through the system sshd, so this cannot be 22 on a Cloudron. Cloning over HTTPS works without it.",
+      "defaultValue": 29418,
+      "containerPort": 2222
+    }
+  },
+  "addons": {
+    "localstorage": {},
+    "postgresql": {},
+    "sendmail": {
+      "supportsDisplayName": true
+    }
+  },
+  "postInstallMessage": "file://POSTINSTALL.md"
+}
