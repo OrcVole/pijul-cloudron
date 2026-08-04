@@ -137,6 +137,29 @@ is raw bytes and the route decodes with `BASE64URL`), then `GET /register?token=
 `email_is_invalid` is `NULL` afterwards. This exercises the `sendmail` addon's wiring (the send must
 have succeeded for the row to survive) without needing to receive real mail.
 
+## Gate 4 precondition, settled ahead of time: the primary store is memory-mapped
+
+Gate 4's own doctrine requires establishing, before measuring anything, whether the application's
+primary store is memory-mapped, because that decides which cgroup counter the pass/fail verdict is
+read against, and getting it wrong produces a check that can never pass however well the app is sized.
+
+**It is.** Every repository's data lives in a `sanakirja` pristine store (`pijul-core`'s dependency,
+pinned `sanakirja = "2.0.0-beta"`), and `sanakirja` builds with `default = ["mmap"]` via `memmap2`.
+Confirmed by reading its own source rather than inferring from the name: `src/debug.rs` and
+`src/tests.rs` both dereference through `env.mmaps.lock()[0].ptr`.
+
+**Consequence for gate 4:** `memory.peak` is not the counter to gate on. The page cache backing every
+open repository's mapped pristine file will expand to fill whatever the cgroup allows and is charged
+to the cgroup, so `memory.peak` will converge toward `memoryLimit` regardless of how well the limit is
+sized. The verdict must instead be read against a **single sample** of `memory.stat anon` plus
+`memory.swap.current`, taken together, per the gate 4 reference. Record `memory.peak` in the evidence
+table for context, with a one-line note explaining why it sits near the cap, but do not gate on it.
+
+One more thing worth planning for now: the number of **concurrently open** repositories under load is
+the load-bearing variable for a memory-mapped store, not request count. The gate 4 load recipe should
+touch several distinct repositories, not the same one repeatedly, or the loaded figure will
+understate a real multi-repository instance.
+
 ## Gate ladder
 
 Not yet run past gate 0's rendering step. Gates 1 to 4 execute against the shipping digest and their
