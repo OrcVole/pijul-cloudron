@@ -108,6 +108,35 @@ registered user"). This is gate 0's rendering step, and it is the reason the che
 looked at rather than trusted from a 200 status code and a DOM dump: everything upstream of this
 point already reported success.
 
+## Registration and email confirmation, read from source ahead of gate 2
+
+**`/register` is one route serving two purposes**, split by HTTP method:
+
+- `POST /register` (`auth::register_post`) creates the user row with `email_is_invalid = true`,
+  inserts a random 32-byte token into the `tokens` table, and sends a confirmation email. **If the
+  email send fails, the user row is deleted** and the response is the generic `?error=alreadyExists`,
+  which is indistinguishable from a real conflict. A broken `sendmail` addon wiring therefore looks
+  like every registration silently failing with no diagnostic beyond the API log.
+- `GET /register?token=<base64url>` (`auth::register_get`) is the confirmation link: it looks the
+  token up in the `tokens` table, deletes it, sets `email_is_invalid` to `NULL`, and signs the user in.
+
+**This is why `GET /register` with no query string returns 400, not a page.** `RegisterToken.token` is
+a required `String`, so Axum's `Query` extractor rejects the request before the handler runs. This was
+observed and correctly asserted in `test/local-stack.sh` without this explanation; now it has one.
+
+**For gate 2, the confirmation token does not need a live inbox.** The `tokens` table stores the raw
+32 bytes; only the emailed link is base64url-encoded. Read it straight from the database:
+
+```sql
+SELECT encode(t.token, 'base64') FROM tokens t
+  JOIN users u ON u.id = t.user_id WHERE u.login = '<test-login>';
+```
+
+(convert standard base64 to base64**url** — `+`→`-`, `/`→`_`, strip `=` padding — since the column
+is raw bytes and the route decodes with `BASE64URL`), then `GET /register?token=<that>` and confirm
+`email_is_invalid` is `NULL` afterwards. This exercises the `sendmail` addon's wiring (the send must
+have succeeded for the row to survive) without needing to receive real mail.
+
 ## Gate ladder
 
 Not yet run past gate 0's rendering step. Gates 1 to 4 execute against the shipping digest and their
