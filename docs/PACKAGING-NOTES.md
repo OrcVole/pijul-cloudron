@@ -7,6 +7,81 @@ and if a check has never been watched failing it is a claim rather than evidence
 
 ---
 
+## 2026-08-05, phases 2 to 6: scaffold, local validation, first throwaway install
+
+### VERIFIED
+
+**`pijul clone --change <hash>` panics against this repository; `--state <hash>` does not.** The
+crash is in `pijul-core 1.0.0-beta.20` at `change.rs:1663`, an `IoHash` deserialisation `unwrap()` on
+a dependency file that is not on disk. `--state` produces the identical tree and exits 0. The pin is
+therefore a state hash, with the change hash asserted after clone as a cross-check
+(`pijul log --limit 1 --hash-only`). Written up for upstream in `docs/FOR-UPSTREAM.md` and never sent.
+
+**The nginx front proxy needs no aliases for `/_app/`, fonts, or `theme-init.js`.** adapter-node
+serves all of them itself; upstream's aliases are a `gzip_static`/immutable-caching optimisation, not
+a requirement. Verified by request, not inferred from the vhost.
+
+**A build that "succeeded" had shipped a dead front proxy.** `1.0.0-1`'s `supervisor/nest.conf`
+started nginx with `-g "daemon off;"` while `nginx.conf` itself also set `daemon off;`; nginx rejects
+the directive given both ways and supervisor gave up after four restarts in seven seconds. Every other
+process reported healthy. Invisible to container-`Up` status; only an actual request against the port
+showed it. `test/local-stack.sh` caught it immediately (all five path-split checks returned `000`).
+Fixed in `1.0.0-2`: 13/13 local checks pass.
+
+**The browser render check needed manual DevTools-protocol driving, not the obvious CLI flags.**
+`--dump-dom`/`--screenshot` hung with no error against the live app across three different headless
+routes. The page opens a persistent SSE connection, which appears to prevent Chrome's implicit
+wait-for-`load` from ever resolving in headless mode, even though the DOM is long since rendered.
+Fixed by launching Chrome once with `--remote-debugging-port`, driving `Page.navigate` over the
+DevTools WebSocket, and using a **fixed** wait instead of the load-event heuristic
+(`test/support/cdp-screenshot.py`). The resulting screenshot shows a fully rendered login page: fonts
+loading, the brand wordmark, live data from the database.
+
+**`secret-scan.sh`'s clean pass with `.anonymize-list` absent was not evidence of anything.** Only
+generic shapes were checked. Populating the real denylist immediately surfaced a false positive (the
+manifest's own declared `contactEmail`, which `START-HERE.md` explicitly permits) and the fix was
+verified in both directions: exit 0 with only the allowed field present, exit 1 the moment a planted
+`haggis.top` string appeared anywhere else. The scanner's detection itself was also negative-tested
+with a planted fake `ghp_` token (exit 1) and its removal (exit 0), per the round's own rule that a
+passing check is a claim until its failure has been observed.
+
+**Registration and repository creation, read from source ahead of gate 2:**
+
+- `POST /register` creates the user with `email_is_invalid = true`, inserts a token, sends a
+  confirmation email, and **deletes the row if the send fails** — a broken `sendmail` wiring looks
+  like every registration failing with a generic `alreadyExists` error, no other diagnostic.
+- `GET /register?token=<base64url>` is the confirmation link, same route as signup, split by method.
+  This is why a bare `GET /register` returns 400: `token` is a required query field and Axum's `Query`
+  extractor rejects the request before the handler runs. (Observed and asserted correctly in gate 0
+  testing before this explanation existed.)
+- The confirmation token can be read directly from the `tokens` table (raw bytes; only the emailed
+  link is base64url-encoded), so gate 2 needs no live inbox to exercise this path.
+- `POST /repo/add` creates a repository: session-gated, CSRF-protected via `axum_csrf`'s
+  double-submit pattern (cookie plus a form-field token, not the cookie alone), idempotent via
+  `on_conflict_do_nothing`.
+
+**`sanakirja`, the crate behind every repository's pristine store, is memory-mapped.** Confirmed from
+the vendored crate source (`default = ["mmap"]` via `memmap2`; `env.mmaps` dereferenced directly in
+its own `debug.rs`/`tests.rs`), not inferred from the name. This means gate 4 must read its verdict
+against a single sample of `memory.stat anon` plus `memory.swap.current`, never `memory.peak`, which
+will otherwise converge toward `memoryLimit` regardless of sizing and fail every correctly configured
+install. Settled before any measurement was taken, per the gate's own precondition.
+
+**The manifest's default `NEST_SSH_PORT` (29418) collided with a sibling app on the first real
+install attempt.** A genuine platform-level conflict (`409 Conflicting tcp port 29418`), not a
+packaging defect; resolved by picking a free port (29500) for the throwaway install via `-p`. Worth
+a note in `POSTINSTALL.md` that the suggested default may need changing at install time on a box with
+many existing `tcpPorts` apps.
+
+### INFERRED, not yet verified
+
+- Everything under "NOT DONE" from the 2026-08-04 entry that is not repeated above.
+- The gate 2 repo-creation CSRF token selector (`test/gate2-flows.sh`) is a prediction against the
+  rendered dashboard HTML, not yet observed on a live instance.
+- `nest-rank`'s six-hourly loop has not yet been observed completing a real run.
+
+---
+
 ## 2026-08-04, phase 1: proving the two open questions
 
 ### VERIFIED
