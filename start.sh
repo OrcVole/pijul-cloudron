@@ -28,6 +28,8 @@ generate_once() {
     if [[ ! -f "${path}" ]]; then
         echo "==> generating ${what} (first run)"
         dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 -w0 > "${path}"
+    else
+        echo "==> existing ${what} found, keeping it"
     fi
 }
 
@@ -45,6 +47,8 @@ fi
 if [[ ! -f "${DATA}/secrets/ssh_host_ed25519_key" ]]; then
     echo "==> generating the SSH host key (first run)"
     ssh-keygen -t ed25519 -N '' -C 'pijul-nest' -f "${DATA}/secrets/ssh_host_ed25519_key" -q
+else
+    echo "==> existing SSH host key found, keeping it"
 fi
 
 # ── Configuration, rewritten on every boot ───────────────────────────────────
