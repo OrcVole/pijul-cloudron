@@ -34,6 +34,29 @@ for p in / /login /register /api/ /theme-init.js; do
 done
 ```
 
+## Gate 0: PASS, against `pijul-testing.haggis.top`
+
+Run 2026-08-05. `1.0.0-1` (on-server build) failed silently on this exact gate — see "nginx crash-looped"
+below — which is why the digest and the fix both matter here, not just the final green result.
+
+| Invariant | Proof |
+| --- | --- |
+| digest | `1.0.0-1`: on-server build, `sha256:584e563b...dc8a6`. `1.0.0-2`: local build, transferred by `docker save \| ssh \| docker load` (no registry push), `sha256:899f4a14...b72e1` |
+| install | `cloudron list` → `running`; front page `200` from outside the rig, both independently confirmed |
+| health | all 4 supervised processes RUNNING (`nest-api`, `nest-ui`, `nest-rank`, `nginx`) via `supervisorctl status` inside the container |
+| path split | `/` 200, `/login` 405, `/register` 400, `/theme-init.js` 200 — all through Cloudron's own reverse proxy, matching the local prediction exactly |
+| logs | clean over the observed window; zero matches for `\berror\b\|panic\|EACCES\|connection refused\|\bfailed\b` |
+| secrets: mode/owner | all four secret files `600 cloudron:cloudron` |
+| secrets: restart idempotency | sha256 byte-identical across a `cloudron restart`; explicit `==> existing X found, keeping it` log line present after the `1.0.0-2` fix |
+| secrets: update idempotency | sha256 byte-identical across a real `cloudron update` (not just a restart) from `1.0.0-1` to `1.0.0-2` — a real early pass of gate 3's update-leg secret invariant, ahead of schedule |
+
+**Defect found and fixed on the live throwaway, not just locally:** `1.0.0-1` shipped the duplicate
+`daemon off;` nginx bug (full writeup above). The on-server build for `1.0.0-1` cost roughly the
+better part of an hour on the rig; the fix was rebuilt locally in under a minute and delivered as a
+`cloudron update` via a direct `docker save | ssh | docker load` transfer, avoiding both a second
+on-server compile and any registry push. `cloudron update` took a real backup automatically as part
+of the update — usable as a genuine pre-fix snapshot for gate 3's restore leg later, not a synthetic one.
+
 ## Verified during phase 1, on a local stand-up
 
 | Invariant | Proof |
