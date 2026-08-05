@@ -4,6 +4,7 @@
   "title": "Pijul Nest",
   "tagline": "Repository hosting for the Pijul version control system",
   "version": "1.0.0",
+  "upstreamVersion": "2026-08-04-SX4EP5B4",
   "description": "file://DESCRIPTION.md",
   "changelog": "file://CHANGELOG.md",
   "website": "https://pijul.org",
