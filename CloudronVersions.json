@@ -47,7 +47,7 @@
           "https://raw.githubusercontent.com/OrcVole/pijul-cloudron/main/screenshots/login-page.png"
         ],
         "documentationUrl": "https://github.com/OrcVole/pijul-cloudron",
-        "dockerImage": "ghcr.io/orcvole/pijul-cloudron@sha256:PLACEHOLDER_NOT_YET_PUSHED"
+        "dockerImage": "ghcr.io/orcvole/pijul-cloudron@sha256:f9ebdc7c68c5d4b3ecad25ee5cf552a532abac4409ee306aafbcb368ecadb053"
       },
       "creationDate": "PLACEHOLDER_ISO8601",
       "ts": 0,
