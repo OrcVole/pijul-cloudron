@@ -21,7 +21,7 @@
 # Usage: CLOUDRON_HOST=<ssh-alias> test/gate3-backup-race.sh <base-url> <app-fqdn> [trials]
 set -uo pipefail
 
-CLOUDRON_HOST="${CLOUDRON_HOST:?set CLOUDRON_HOST to the ssh alias for the rig, e.g. haggis}"
+CLOUDRON_HOST="${CLOUDRON_HOST:?set CLOUDRON_HOST to the ssh alias for the rig, e.g. myrig}"
 BASE="${1:?usage: gate3-backup-race.sh <base-url> <app-fqdn> [trials]}"
 APP="${2:?usage: gate3-backup-race.sh <base-url> <app-fqdn> [trials]}"
 TRIALS="${3:-3}"

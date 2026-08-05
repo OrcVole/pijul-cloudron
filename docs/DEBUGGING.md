@@ -34,7 +34,7 @@ for p in / /login /register /api/ /theme-init.js; do
 done
 ```
 
-## Gate 0: PASS, against `pijul-testing.haggis.top`
+## Gate 0: PASS, against the throwaway test install
 
 Run 2026-08-05. `1.0.0-1` (on-server build) failed silently on this exact gate — see "nginx crash-looped"
 below — which is why the digest and the fix both matter here, not just the final green result.

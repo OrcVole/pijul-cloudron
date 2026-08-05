@@ -30,7 +30,7 @@ ability to push to the instance at all.
 ### VERIFIED, against the live throwaway install (not local, not predicted)
 
 - **Registration → email confirmation → sign-in → repository creation all pass end to end**, using
-  real HTTP requests against `pijul-testing.haggis.top`, not curl against a local stand-up.
+  real HTTP requests against the throwaway test install, not curl against a local stand-up.
 - **The confirmation token needs padded base64url**, matching `data_encoding::BASE64URL` exactly.
   Stripping the `=` padding (an earlier version of `test/gate2-flows.sh` did this) fails silently:
   `register_get`'s own fallback path swallows the decode error and redirects to `/` with no cookie
@@ -138,7 +138,7 @@ loading, the brand wordmark, live data from the database.
 generic shapes were checked. Populating the real denylist immediately surfaced a false positive (the
 manifest's own declared `contactEmail`, which `START-HERE.md` explicitly permits) and the fix was
 verified in both directions: exit 0 with only the allowed field present, exit 1 the moment a planted
-`haggis.top` string appeared anywhere else. The scanner's detection itself was also negative-tested
+box-domain string appeared anywhere else. The scanner's detection itself was also negative-tested
 with a planted fake `ghp_` token (exit 1) and its removal (exit 0), per the round's own rule that a
 passing check is a claim until its failure has been observed.
 
