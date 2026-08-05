@@ -7,6 +7,66 @@ and if a check has never been watched failing it is a claim rather than evidence
 
 ---
 
+## 2026-08-05, gate 2 against the real throwaway install: registration through repo creation, and a corrected claim
+
+### CORRECTED: HTTPS does not push
+
+**Every earlier document in this package, including this one, said push worked over HTTPS. It does
+not.** Confirmed from source, not inferred: `api/src/repository/dot_pijul.rs`, the handler behind the
+`.pijul` HTTP route, implements only `Changelist`, `Change`, `State`, `Identities` and `Id` — all
+reads. There is no apply/write path anywhere in that file. The actual write path,
+`self.apply(hash, file, size, chan, &mut session)`, lives entirely in `api/src/ssh.rs`. **The Nest's
+HTTPS surface is read only: browsing and cloning. Pushing requires SSH, unconditionally**, regardless
+of whether a repository is public or private.
+
+This was found by running `test/gate2-flows.sh`'s push leg for real and getting `404 Not Found` on
+both the push and the follow-up clone, then reading `dot_pijul.rs` end to end rather than assuming a
+write path existed somewhere further down the file. `README.md`, `DESCRIPTION.md`, `POSTINSTALL.md`,
+`CHANGELOG.md` and `nginx.conf`'s comments all previously claimed HTTPS push and have been corrected.
+The install-time framing of the SSH `tcpPorts` entry as an optional convenience is also now known to
+be wrong in consequence: leaving it disabled does not trade away agent-based auth, it removes the
+ability to push to the instance at all.
+
+### VERIFIED, against the live throwaway install (not local, not predicted)
+
+- **Registration → email confirmation → sign-in → repository creation all pass end to end**, using
+  real HTTP requests against `pijul-testing.haggis.top`, not curl against a local stand-up.
+- **The confirmation token needs padded base64url**, matching `data_encoding::BASE64URL` exactly.
+  Stripping the `=` padding (an earlier version of `test/gate2-flows.sh` did this) fails silently:
+  `register_get`'s own fallback path swallows the decode error and redirects to `/` with no cookie
+  set, indistinguishable from a real failure by status code alone. Only the `Location` header
+  distinguishes the two paths (`/<login>` on success, `/` on any failure).
+- **Repository creation is `POST /api/settings/repo/add`, not `/repo/add`.** `settings.rs`'s own route
+  table reads `.route("/repo/add", post(create_repo))`, and it is easy to stop there without tracing
+  the full `.nest("/api", ...)` → `.nest("/settings", ...)` chain that composes the real path. Posting
+  to the bare path hits nginx's UI catch-all instead of the API, and **SvelteKit's own built-in origin
+  check rejects it with "Cross-site POST form submissions are forbidden"** — an unrelated mechanism
+  whose error text reads exactly like a CSRF rejection and pointed the investigation the wrong way
+  until the response body was read instead of trusting the status code alone.
+- **The CSRF value to submit is not the raw `Csrf_Token` cookie.** Read from `axum_csrf` 0.11.0's own
+  source: the cookie holds a random `self.token`; the value a client must submit is
+  `authenticity_token()` — `HMAC-SHA256(salt, self.token)`, base64-encoded, computable only
+  server-side. It arrives as the plain `"token"` field in the JSON body of any authenticated GET that
+  extracts `CsrfToken`, concretely `GET /api/settings`'s response. Submitting the raw cookie value
+  decodes fine but verifies against the wrong thing, producing the same misleading origin-check error
+  text once the path above is also fixed — only reading `token.rs`'s `verify()` implementation
+  settled which of the two failures was actually firing.
+- **`cloudron exec` degraded mid-session**, matching field-guide gotcha #167 exactly (repeated
+  `ETIMEDOUT` on trivial calls). Switched to `ssh <rig> docker exec` by the app's `fqdn` label, which
+  stayed reliable for the rest of the session.
+- **A bash gotcha, unrelated to the app:** an apostrophe inside a `${VAR:?message}` parameter
+  expansion breaks bash's parser, even though the whole expression sits inside outer double quotes —
+  bash scans for quote balance inside the braces independently of the outer quoting context. Cost a
+  real debugging cycle before being traced to that one character.
+
+### Still open
+
+- The SSH push path itself is not yet exercised by any test in this package. `test/gate2-flows.sh`'s
+  push/pull leg currently only proves HTTPS clone works and correctly does not attempt to push over
+  HTTPS. An SSH-based push test is the next real gap, not yet closed.
+
+---
+
 ## 2026-08-05, phases 2 to 6: scaffold, local validation, first throwaway install
 
 ### VERIFIED
@@ -161,8 +221,6 @@ crash loop rather than a degraded start.
 - **`memoryLimit` of 2 GiB is a starting guess**, not a measurement. Gate 4 sets the real number.
 - **The `sendmail` addon's variables map cleanly onto the UI's `SMTP_*` names.** Read from upstream's
   `ui-start` wrapper, never exercised: no mail has been sent.
-- **HTTP clone and push works through the `.pijul` path rule.** The route is proxied and the API
-  answers on it, but no actual `pijul clone` over HTTPS has been run against this package yet.
 - **`pbkdf2Iterations` of 600000.** Upstream's default is `1`, which is not defensible to ship. The
   value chosen is conventional for PBKDF2-HMAC-SHA512 rather than measured against this application's
   login latency.

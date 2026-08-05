@@ -13,7 +13,8 @@
 # Every flow here was chosen because it touches a declared addon or a documented
 # load-bearing step found while reading the source (see docs/DEBUGGING.md):
 #   - registration exercises `sendmail` and rolls back on send failure
-#   - repository push/pull exercises `localstorage` and `postgresql` together
+#   - repository creation exercises `postgresql`; SSH push (not yet run here)
+#     would additionally exercise `localstorage`
 #   - the discussion flow exercises the read path back out through the UI
 #
 # Usage: CLOUDRON_HOST=<ssh-alias> test/gate2-flows.sh <base-url> <app-fqdn>
@@ -123,7 +124,7 @@ else
     bad "POST /login → $login_status, expected a redirect"
 fi
 
-say "flow: repository push and pull over HTTPS (exercises localstorage + postgresql together)"
+say "flow: local pijul repository setup (a change to try pushing, once the SSH leg exists)"
 mkdir -p "$WORK/repo-src"
 pijul_in repo-src init >/dev/null 2>&1
 echo "gate 2 content $(date +%s 2>/dev/null || echo static)" > "$WORK/repo-src/hello.txt"
@@ -135,28 +136,41 @@ else
     bad "could not record a local test change; pijul client missing or broken"
 fi
 
-say "flow: repository creation (POST /repo/add, CSRF-protected, session-gated)"
-# api/src/settings.rs:479 create_repo(): requires a signed-in session
-# (get_user_id_strict, FORBIDDEN otherwise) and a CSRF token via axum_csrf's
-# double-submit pattern. VERIFIED against the live install (not the earlier
-# HTML-scrape guess, which was wrong about the mechanism entirely): there is
-# no hidden form field to scrape. Any authenticated GET to /api/... that uses
-# the CsrfToken extractor issues a fresh `Csrf_Token` cookie -- concretely,
-# GET /api/settings, which SvelteKit's own hooks.server.ts re-emits to the
-# browser as a non-httpOnly cookie for client JS to read (see the handleFetch
-# comment there). The cookie is httpOnly on Axum's own response, which curl
-# reads from Set-Cookie regardless -- httpOnly only restricts browser JS, not
-# an HTTP client -- so the browser-side re-emission step is not needed here:
-# the same value read from GET /api/settings' Set-Cookie is submitted back
-# unchanged as the form's `token` field, csrf_verify() checks it against its
-# own cookie copy, and both readings of that value are already in the jar.
+say "flow: repository creation (POST /api/settings/repo/add, CSRF-protected, session-gated)"
+# TWO real mistakes here, both found only by running this for real and reading
+# the actual response body rather than trusting a status code:
+#
+# 1. The path. settings.rs's own route table reads .route("/repo/add",
+#    post(create_repo)) and it is easy to stop there, but that table is
+#    mounted via .nest("/settings", settings::router()) inside api_router(),
+#    itself mounted via .nest("/api", api_router()) in main.rs. The real path
+#    is /api/settings/repo/add. Posting to bare /repo/add hits nginx's
+#    catch-all UI location instead of the API, and SvelteKit's own built-in
+#    origin check rejects it with "Cross-site POST form submissions are
+#    forbidden" BEFORE the request ever reaches axum_csrf -- a completely
+#    unrelated mechanism whose error text looks exactly like a CSRF failure
+#    and sent the debugging in the wrong direction until the response body
+#    was actually read instead of just the status code.
+#
+# 2. The CSRF token itself is NOT the raw Csrf_Token cookie value. Read from
+#    axum_csrf 0.11.0's own source (token.rs): the cookie holds a random
+#    `self.token`, and the value a client must submit is
+#    `authenticity_token()` -- HMAC-SHA256(salt, self.token), base64-encoded,
+#    a value derivable only server-side. It is not embedded in any HTML form
+#    field either; it comes back as the plain "token" field in the JSON body
+#    of any authenticated GET that extracts CsrfToken, concretely
+#    GET /api/settings's SettingsResponse. Submitting the raw cookie value
+#    (which does decode, just to the wrong thing) produces the SAME
+#    misleading "Cross-site POST..." text once the path is fixed, because
+#    csrf_verify()'s failure and the origin check share that error surface;
+#    only reading source settled which one was actually firing.
 REPO_NAME="gate2-repo-$$"
-curl -s -o /dev/null -b "$JAR" -c "$JAR" "$BASE/api/settings"
-csrf_token="$(grep -i 'csrf_token' "$JAR" | awk '{print $NF}')"
+settings_json="$(curl -s -b "$JAR" -c "$JAR" "$BASE/api/settings")"
+csrf_token="$(printf '%s' "$settings_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null)"
 if [[ -z "$csrf_token" ]]; then
-    bad "GET /api/settings set no Csrf_Token cookie; check the session is actually authenticated"
+    bad "GET /api/settings returned no 'token' field; check the session is actually authenticated"
 else
-    create_status="$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -c "$JAR" -X POST "$BASE/repo/add" \
+    create_status="$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -c "$JAR" -X POST "$BASE/api/settings/repo/add" \
         --data-urlencode "name=$REPO_NAME" \
         --data-urlencode "private=false" \
         --data-urlencode "token=$csrf_token")"
@@ -168,20 +182,26 @@ else
     fi
 fi
 
-say "flow: push over HTTPS and pull back, verified byte-identical"
+say "flow: HTTPS is read-only -- confirm push over HTTPS is correctly refused, not silently accepted"
+# CORRECTED 2026-08-05, from a real 404 on this exact call plus reading source:
+# api/src/repository/dot_pijul.rs implements only read commands (Changelist,
+# Change, State, Identities, Id). The write/apply path lives entirely in
+# api/src/ssh.rs. HTTPS push was never going to work by design, not a defect,
+# so this flow now asserts the refusal is real rather than treating it as a
+# failure. An actual push exercise needs SSH: register a key via
+# POST /api/settings/ssh/add, then `pijul push` over ssh://. Not yet
+# implemented here -- see docs/PACKAGING-NOTES.md "Still open".
 if [[ -n "${repo_row:-}" ]]; then
     push_url="$BASE/$LOGIN/$REPO_NAME"
-    pijul_in repo-src push -a "$push_url" 2>&1 | tail -5
-    rm -rf "$WORK/repo-pull"
-    pijul_in . clone "$push_url" repo-pull 2>&1 | tail -5
-    if [[ -f "$WORK/repo-pull/hello.txt" ]] \
-        && diff -q "$WORK/repo-src/hello.txt" "$WORK/repo-pull/hello.txt" >/dev/null 2>&1; then
-        ok "pushed and pulled back byte-identical (verified with diff, not just presence)"
+    push_out="$(pijul_in repo-src push -a "$push_url" 2>&1)"
+    if printf '%s' "$push_out" | grep -qi "404\|not found"; then
+        ok "HTTPS push correctly refused (404), matching the read-only design confirmed in source"
     else
-        bad "push/pull did not round-trip the same content"
+        bad "HTTPS push did not refuse as expected -- if this now succeeds, dot_pijul.rs has grown a write path and every doc claiming HTTPS is read-only needs revisiting: $push_out"
     fi
+    echo "  (SSH push itself: not yet exercised by this script, see docs/PACKAGING-NOTES.md)"
 else
-    echo "  (skipped: no repository to push into)"
+    echo "  (skipped: no repository to test against)"
 fi
 rm -rf "$WORK"
 

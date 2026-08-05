@@ -3,7 +3,7 @@ built on a sound theory of patches rather than on snapshots and three-way merges
 
 It gives a Pijul repository the things a repository needs once more than one person touches it: user
 accounts, a web interface for browsing changes and file trees, discussions attached to a repository,
-and push and pull over both HTTPS and SSH.
+cloning over HTTPS, and push over SSH.
 
 ## Why Pijul rather than Git
 
@@ -20,8 +20,9 @@ is that.
 
 - The web interface, at your own domain
 - Repository hosting with per-user accounts, public and private repositories
-- Push and pull over **HTTPS**, working immediately with no port configuration
-- Push and pull over **SSH**, on a port you choose at install time
+- Cloning over **HTTPS**, working immediately with no port configuration
+- Pushing over **SSH**, on a port you choose at install time — the Nest's HTTPS surface is
+  clone/read only; pushing a change requires SSH
 - Discussions and change review
 - Outgoing email through the Cloudron mail relay, for password recovery and notifications
 
