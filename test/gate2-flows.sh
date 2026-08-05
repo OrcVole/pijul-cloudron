@@ -18,10 +18,10 @@
 #   - the discussion flow exercises the read path back out through the UI
 #
 # Usage: CLOUDRON_HOST=<ssh-alias> test/gate2-flows.sh <base-url> <app-fqdn>
-#   e.g.  CLOUDRON_HOST=haggis test/gate2-flows.sh https://pijul-testing.haggis.top pijul-testing.haggis.top
+#   e.g.  CLOUDRON_HOST=myrig test/gate2-flows.sh https://pijul-test.example.com pijul-test.example.com
 set -uo pipefail
 
-CLOUDRON_HOST="${CLOUDRON_HOST:?set CLOUDRON_HOST to the ssh alias for the rig, e.g. haggis}"
+CLOUDRON_HOST="${CLOUDRON_HOST:?set CLOUDRON_HOST to the ssh alias for the rig, e.g. myrig}"
 
 # `pijul` runs inside the toolchain probe container rather than on the runner
 # host: the packaging rig is an ostree system (Bazzite) where installing
