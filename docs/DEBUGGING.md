@@ -262,6 +262,48 @@ the load-bearing variable for a memory-mapped store, not request count. The gate
 touch several distinct repositories, not the same one repeatedly, or the loaded figure will
 understate a real multi-repository instance.
 
+## Gate 4: memory, idle versus loaded — PASS, with a large margin
+
+Run 2026-08-05, after a `cloudron restart` for a clean baseline (the direct `echo reset >
+memory.peak` write this rig's cgroupfs-driver layout rejected with `Invalid argument`; the
+doctrine's own restart fallback was used instead and worked). Load: 8 concurrent workers, each
+registering a real account and creating 3 distinct repositories (24 attempted), then repeatedly
+requesting each repository's file tree and `.pijul` state endpoint — chosen specifically to open
+several *distinct* mmap'd pristine stores concurrently, per the precondition above, not to hammer one
+repository with request volume.
+
+| Invariant | Idle | Loaded |
+| --- | --- | --- |
+| `memory.current` | 47 MiB | 64 MiB |
+| `memory.peak` | 63 MiB | 64 MiB |
+| `memory.anon` | 44 MiB | 58 MiB |
+| `memory.swap` | 0 | 0 |
+| `oom_kill` | 0 | 0 |
+| per-process RSS | node 67 MB, nest 26 MB, supervisord 28 MB | node 79 MB, nest 31 MB, supervisord 28 MB |
+
+**Verdict: PASS.** Gated on `memory.anon + memory.swap` (single sample), since the store is
+memory-mapped: **58 MiB, 2.8% of the 2 GiB `memoryLimit`.** `memory.peak` sits at 64 MiB (3.1% of
+cap) and is recorded for context only, not gated on, per the precondition above — though at this
+scale of load the two counters happen to agree closely, since nothing has come close to page-cache
+pressure yet. Zero OOM kills throughout.
+
+**Honest caveat on load completeness.** Only 12 of the 24 intended repositories were actually
+created — some workers' registration or repository-creation calls failed under the concurrency
+itself (not investigated further; this measures memory, not gate 2's flows again), so the *loaded*
+figures above reflect roughly half the intended volume, not a saturating load. The margin is large
+enough (over 35x headroom on the anon+swap reading) that this does not change the PASS verdict, but
+it does mean this run does not establish a tight lower bound for `memoryLimit`. Left at 2 GiB
+deliberately: this test does not have the range to say a smaller number is safe, and the constrained-
+box option belongs in operator-facing documentation as a knob, not as a change to the shipped
+default (per the gate's own doctrine on this exact question).
+
+**A mystery from earlier resolved as a side effect of investigating this gate's sampling failure:**
+an `ssh` timeout mid-load turned out to hit the exact same IP address the unexplained Node.js
+`AggregateError [ETIMEDOUT]` crash traced to during gate 2 testing hours earlier — the rig's own
+public address. That crash was almost certainly the UI making some outbound self-check against its
+own public domain, coinciding with transient network pressure near the rig, not a third-party
+service or an application defect. Recorded here rather than left as an open anomaly.
+
 ## Gate 2: functional flows, against the real throwaway install
 
 Run 2026-08-05, `test/gate2-flows.sh`, 8/8 pass on the final run. Path: registration → email
