@@ -349,15 +349,33 @@ captured a stray non-shell line that broke a later `source`, and a `cloudron bac
 a fixed line number that `script`'s pty wrapper (which inserts a leading blank line) silently shifted
 by one, making an earlier run capture the table's own header text as if it were a real backup id.
 
-With both fixed, one full run: **restore succeeded, the repository opened cleanly, `pijul log`
-returned a consistent two-change history with no error.** But the two changes present were the
-"baseline" commit and pijul's own internal root-bootstrap change — **neither trial commit had
-landed**, meaning the backup captured actually predated both race attempts finishing. The harness
-proved out mechanically (real backup, real restore, a genuine integrity check beyond mere presence),
-but this run did not actually land inside the race window it exists to test, so the underlying
-question is **still open**, not answered either direction. A tighter harness — larger content so the
-push takes measurably longer, or timing the backup trigger against the push's own progress rather
-than firing it at the start — is what closing this properly would need.
+With both fixed, one full run (2 trials, a few hundred bytes each): **restore succeeded, the
+repository opened cleanly, `pijul log` returned a consistent two-change history with no error.** But
+neither trial commit had landed — the backup captured predated both pushes finishing, so this run
+did not land inside the race window at all.
+
+**Strengthened and re-run: same outcome, better evidence.** Pushed ~5 MB per trial instead of a few
+hundred bytes (so the push itself takes real time), started the backup after the push began rather
+than simultaneously, ran 4 trials instead of 2, and added a byte-level check of the pushed bulk file
+after restore, not just a clean `pijul log` (a torn root page could in principle leave a log that
+reads fine while the file bytes it points at are corrupt). Two more real bugs were found and fixed
+doing this: `wait` was only covering the push's background job, not the backup's, so the script could
+inspect an unfinished backup's log; and the backup-id regex excluded `.`, silently truncating every
+id at the version string's first dot and making every one of the 4 trials report "No such backup" on
+restore despite the backups themselves being real (`app_..._v1.0.0_bd46cd4b`, truncated to
+`app_..._v1`).
+
+With those fixed too: **still zero trial commits present in the restored repository**, across all 4
+strengthened trials. Six real trials total now (2 small + 4 large), real backups, real restores, real
+integrity checks each time, and **zero corruption observed in any of them** — a stronger result than
+the first run reported, and worth recording as such. But the honest limit stands: this harness can
+only observe whether a trial commit landed or not, not pijul's internal commit timing, so "the backup
+consistently finished before the push's critical write moment" cannot be distinguished from "the
+harness's 1-second stagger is still too coarse to land inside a window that may be very narrow." The
+underlying question is **still open, not closed either direction**, and closing it properly would
+need instrumenting pijul's own commit path (a debug build with an artificial delay inside the
+root-page write, for instance) rather than tuning this harness's timing further, which is out of
+proportion to chase further in this round.
 
 ## Gate ladder
 
