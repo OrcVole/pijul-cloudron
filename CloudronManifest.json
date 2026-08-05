@@ -36,5 +36,6 @@
       "supportsDisplayName": true
     }
   },
-  "postInstallMessage": "file://POSTINSTALL.md"
+  "postInstallMessage": "file://POSTINSTALL.md",
+  "dockerImage": "ghcr.io/orcvole/pijul-cloudron@sha256:f9ebdc7c68c5d4b3ecad25ee5cf552a532abac4409ee306aafbcb368ecadb053"
 }
