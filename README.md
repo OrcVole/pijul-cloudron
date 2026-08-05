@@ -5,7 +5,7 @@ the [Pijul](https://pijul.org) version control system.
 
 Pijul is a distributed version control system built on a theory of patches. Self-hosting a bare Pijul
 repository needs no server software at all, so there is nothing to package there. The Nest is the
-part that needs hosting: accounts, a web interface, discussions, and push and pull over HTTPS and SSH.
+part that needs hosting: accounts, a web interface, discussions, cloning over HTTPS, and push over SSH.
 
 Cloudron already offers Forgejo, Gogs and GitLab, and **none of them host Pijul repositories**, so
 this fills a real gap rather than duplicating one.
@@ -18,7 +18,10 @@ Not yet published to the community app store. Until then:
 cloudron install --image ghcr.io/orcvole/pijul-cloudron:<tag>
 ```
 
-Choose an SSH port during install, or leave it disabled and use HTTPS.
+Choose an SSH port during install. Leaving it disabled still gives browsing and cloning over HTTPS,
+but this application cannot accept a push without SSH: its HTTPS surface is read only (verified
+against source — the write/apply path lives entirely in the SSH server, `api/src/ssh.rs`; the HTTPS
+`.pijul` route only ever reads).
 
 ## How the container is put together
 

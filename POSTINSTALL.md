@@ -6,21 +6,24 @@ yours.
 
 ### Cloning and pushing
 
-**Over HTTPS**, which works immediately:
+**Cloning over HTTPS** works immediately, no SSH needed:
 
 ```
 pijul clone https://<your-domain>/<user>/<repo>
 ```
 
-**Over SSH**, on the port you chose during install:
+**Pushing needs SSH.** The Nest's HTTPS surface is read only: browsing, cloning, and reading
+private repositories you are authenticated to, but not accepting a push. To push a change, clone
+and push over SSH instead, on the port you chose during install:
 
 ```
 pijul clone ssh://<user>@<your-domain>:<port>/<user>/<repo>
+pijul push
 ```
 
 The Nest serves SSH itself rather than through the system's own SSH daemon, which is why it cannot
-use port 22. If you left the SSH port disabled, HTTPS still does everything except agent-based
-authentication.
+use port 22. If you leave the SSH port disabled, you can browse and clone but cannot push to this
+instance at all — enable it if you intend to use this as a real remote rather than a read-only mirror.
 
 Add your public key under your account settings before pushing over SSH.
 
