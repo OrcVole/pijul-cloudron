@@ -293,11 +293,29 @@ seeded instance).
 | container | new container ID post-restore, confirming genuine recreation not a restart |
 | health | front page `200` from outside the rig after restore |
 
-**Not yet run:** the update leg proper (two versions, `cloudron update` between them) — the secret
-survival half of it was already demonstrated in gate 0 (`1.0.0-1` → `1.0.0-2`), but data-count
-survival across an update specifically has not. The gate 3 backup-race risk above (`sanakirja`
-racing a live backup) also remains untested: it needs a concurrent push-during-backup harness, not
-yet built.
+**Update leg: PASS.** A real `cloudron update` between two distinct digests, against real gate-2
+data: `users`, `repositories`, `tokens` and `publickeys` counts all exact (12/4/4/1) before and after,
+`pbkdf2_password` sha256 unchanged, a genuinely new container ID confirming real recreation rather
+than a restart.
+
+**The backup-race risk: harness built, run, and genuinely inconclusive — not "safe", not "unsafe".**
+`test/gate3-backup-race.sh` races a real `cloudron backup create` against a real SSH push, restores
+from the resulting backup, then checks the repository with `pijul log` rather than just `pijul
+clone` (a torn root page can break the former while the latter still appears to work). Two real bugs
+in the harness itself were found and fixed while building it: an `ssh-agent` output redirect
+captured a stray non-shell line that broke a later `source`, and a `cloudron backup list` parse used
+a fixed line number that `script`'s pty wrapper (which inserts a leading blank line) silently shifted
+by one, making an earlier run capture the table's own header text as if it were a real backup id.
+
+With both fixed, one full run: **restore succeeded, the repository opened cleanly, `pijul log`
+returned a consistent two-change history with no error.** But the two changes present were the
+"baseline" commit and pijul's own internal root-bootstrap change — **neither trial commit had
+landed**, meaning the backup captured actually predated both race attempts finishing. The harness
+proved out mechanically (real backup, real restore, a genuine integrity check beyond mere presence),
+but this run did not actually land inside the race window it exists to test, so the underlying
+question is **still open**, not answered either direction. A tighter harness — larger content so the
+push takes measurably longer, or timing the backup trigger against the push's own progress rather
+than firing it at the start — is what closing this properly would need.
 
 ## Gate ladder
 
