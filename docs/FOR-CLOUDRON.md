@@ -57,3 +57,20 @@ fully healthy by that measure while its SSH listener is dead. There is no manife
 
 Not a request for one necessarily, but worth noting that for git-hosting-shaped applications the
 health check covers the less important half of the service.
+
+## 5. A `tcpPorts` `defaultValue` can collide on a rig that already runs several such apps
+
+Hit directly, first real install attempt: `defaultValue: 29418` conflicted with a sibling app already
+holding that port on the test rig (`409 Conflicting tcp port 29418`), and the install failed outright
+before the build even ran. Not a bug — the platform correctly rejected the conflict — but worth
+naming as a genuine rough edge for any operator running several `tcpPorts`-declaring apps: nothing in
+the install flow suggests *which* other app holds the conflicting port, or offers a "give me a free
+one" option, so resolving it means guessing a different number and retrying. A `cloudron ports list`
+equivalent, or the install error naming the colliding app, would have turned a multi-attempt
+diagnosis into a one-line fix.
+
+Separately, a failed install attempt (source uploaded from the wrong local directory, an unrelated
+packaging-side mistake) left a `pending_install` app record behind, and that record kept holding the
+port it had already claimed, blocking a clean retry with the same port number even after the actual
+mistake was fixed. `cloudron uninstall` on the stray record cleared it. Worth knowing that a
+half-failed install can leave port reservations behind that a plain retry does not release on its own.
