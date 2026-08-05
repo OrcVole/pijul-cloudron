@@ -90,28 +90,42 @@ script -qefc 'pijul push -a ssh://${LOGIN}@${APP_HOST}:${SSH_PORT}/${LOGIN}/${RE
 ok "baseline commit pushed"
 
 say "racing $TRIALS trial(s): backup create + push, concurrent"
+# First run (2 trials, small content) missed the window entirely: the backup
+# finished before the push of a few hundred bytes even started meaningfully.
+# Widen the window two ways: content large enough that the push itself takes
+# real time (a few MB, not a few bytes), and start the backup slightly AFTER
+# the push begins rather than at the same instant, so it lands mid-push
+# rather than mostly before it.
 last_race_backup=""
 for i in $(seq 1 "$TRIALS"); do
     echo "  trial $i/$TRIALS"
+    podman exec -w /work/src gate3-race-agent bash -c "
+        head -c 5000000 /dev/urandom | base64 >> bulk-$i.bin
+        pijul add bulk-$i.bin >/dev/null 2>&1
+        pijul record -a -m 'race trial $i, ~5MB' >/dev/null 2>&1
+    "
+    (
+        podman exec -e SSH_AUTH_SOCK="$AUTH_SOCK" -w /work/src gate3-race-agent bash -c "
+            export HOME=/tmp
+            script -qefc 'pijul push -a ssh://${LOGIN}@${APP_HOST}:${SSH_PORT}/${LOGIN}/${REPO}' /dev/null <<< y >/dev/null 2>&1
+        "
+    ) &
+    push_pid=$!
+    sleep 1
     script -qefc "cloudron backup create --app $APP" /dev/null > "$WORK/backup-$i.log" 2>&1 &
     backup_pid=$!
-    podman exec -w /work/src gate3-race-agent bash -c "
-        echo 'change $i' >> file.txt
-        pijul add file.txt >/dev/null 2>&1
-        pijul record -a -m 'race trial $i' >/dev/null 2>&1
-    "
-    podman exec -e SSH_AUTH_SOCK="$AUTH_SOCK" -w /work/src gate3-race-agent bash -c "
-        export HOME=/tmp
-        script -qefc 'pijul push -a ssh://${LOGIN}@${APP_HOST}:${SSH_PORT}/${LOGIN}/${REPO}' /dev/null <<< y >/dev/null 2>&1
-    "
+    wait "$push_pid"
     wait "$backup_pid"
     if grep -qi "backed up" "$WORK/backup-$i.log"; then
         # Match the id pattern rather than a fixed line number: `script`'s pty
         # wrapper inserts a leading blank line, which silently shifted this by
         # one and made an earlier version of this script capture the literal
         # header text "Id" as if it were a real backup id.
+        # Backup ids contain dots (the app's semver, e.g. _v1.0.0_), which an
+        # earlier version of this pattern excluded, truncating every id at the
+        # first dot and producing an id that never matched a real backup.
         last_race_backup="$(script -qefc "cloudron backup list --app $APP" /dev/null 2>/dev/null \
-            | grep -oE '^app_[A-Za-z0-9_-]+' | head -1)"
+            | grep -oE '^app_[A-Za-z0-9_.-]+' | head -1)"
         echo "    backup finished during/around the push (id: ${last_race_backup:-unknown})"
     else
         echo "    backup did not report success this trial:"
@@ -149,15 +163,36 @@ clone_out="$(podman exec -w /work gate3-race-agent bash -c "
 ")"
 log_out="$(podman exec -w /work/verify gate3-race-agent bash -c 'export HOME=/tmp; pijul log 2>&1')"
 
+opens_cleanly=0
 if printf '%s' "$clone_out" | grep -qi "Repository created" && \
    printf '%s' "$log_out" | grep -qi "^Change "; then
+    opens_cleanly=1
     ok "post-restore repository opens and its log is internally consistent"
     printf '%s\n' "$log_out" | grep -c "^Change " | xargs -I{} echo "  {} change(s) visible in the restored log"
 else
     bad "post-restore repository failed to open or log cleanly -- this IS the risk this test exists to catch"
     echo "--- clone output ---"; printf '%s\n' "$clone_out" | sed 's/^/  /'
     echo "--- log output ---"; printf '%s\n' "$log_out" | sed 's/^/  /'
-    exit 1
 fi
 
-printf '\n%d trial(s) run. A pass here means the window was not hit in %d tries, not that the risk is closed.\n' "$TRIALS" "$TRIALS"
+# A torn root page could leave a log that reads fine while the actual file
+# bytes it points at are corrupt -- check the large bulk file byte for byte
+# against what was pushed, not just that the log lists it.
+if [[ "$opens_cleanly" == "1" ]]; then
+    src_hash="$(podman exec gate3-race-agent bash -c "sha256sum /work/src/bulk-${TRIALS}.bin 2>/dev/null | cut -d' ' -f1")"
+    dst_hash="$(podman exec gate3-race-agent bash -c "sha256sum /work/verify/bulk-${TRIALS}.bin 2>/dev/null | cut -d' ' -f1")"
+    if [[ -n "$src_hash" ]] && [[ "$src_hash" == "$dst_hash" ]]; then
+        ok "last trial's ~5MB file sha256-identical after the race, restore, and re-clone"
+    else
+        bad "last trial's bulk file does NOT match: src=$src_hash dst=$dst_hash -- this IS the risk this test exists to catch"
+        opens_cleanly=0
+    fi
+fi
+
+printf '\n%d trial(s) run. ' "$TRIALS"
+if [[ "$opens_cleanly" == "1" ]]; then
+    printf 'A pass here means the window was not hit in %d tries, not that the risk is closed.\n' "$TRIALS"
+else
+    printf 'FAILED -- see above.\n'
+    exit 1
+fi
