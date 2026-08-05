@@ -160,32 +160,37 @@ is raw bytes and the route decodes with `BASE64URL`), then `GET /register?token=
 `email_is_invalid` is `NULL` afterwards. This exercises the `sendmail` addon's wiring (the send must
 have succeeded for the row to survive) without needing to receive real mail.
 
-## Gate 2 open question, found ahead of time: how does HTTPS push actually authenticate?
+## Gate 2, resolved: HTTPS never pushes, at all, regardless of authentication
 
-`docs/FOR-UPSTREAM.md`-worthy, but not sent: found while checking whether `test/gate2-flows.sh`'s
-push/pull leg would actually work. `api/src/repository/dot_pijul.rs`, the handler behind the
-`.pijul` HTTP protocol route, resolves the caller via
+Superseded, 2026-08-05: the question below was "how does HTTPS push authenticate", which assumed
+HTTPS push exists. **It does not.** Observed directly (`404 Not Found` on a real push attempt against
+the live throwaway install) and then confirmed by reading `dot_pijul.rs` end to end:
+`api/src/repository/dot_pijul.rs`, the handler behind the `.pijul` HTTP route, implements only
+`Changelist`, `Change`, `State`, `Identities` and `Id` — every one a read. There is no apply/write
+branch anywhere in the file. The real write path, `self.apply(hash, file, size, chan, &mut session)`,
+lives entirely in `api/src/ssh.rs`. Pushing requires SSH, unconditionally, for public and private
+repositories alike. `README.md`, `DESCRIPTION.md`, `POSTINSTALL.md`, `CHANGELOG.md` and this file's own
+earlier framing all claimed otherwise and have been corrected.
+
+The bearer-token mechanism below is real and still accurate as a description of the code, but it
+authenticates **reads of private repositories over HTTPS**, not push. Kept for that reason, retitled
+so a future reader does not draw the same wrong inference this round did.
+
+### The bearer-token mechanism (for private-repo reads, not push)
+
+`api/src/repository/dot_pijul.rs` resolves the caller via
 `crate::http_auth::bearer_user(&config, req.headers())` — an `Authorization: Bearer <token>` header,
 checked with a single HMAC and no database lookup. **Not** the browser session cookie, and **not**
-HTTP Basic auth.
+HTTP Basic auth. `bearer_user` returns `None` (anonymous) rather than an error when the header is
+absent, which is why a plain, unauthenticated `pijul clone` of a **public** repository over HTTPS
+works with no setup at all; a private repository's read presumably needs this token.
 
 The token itself comes from a distinct flow, documented in `http_auth.rs`'s own module comment: the
 client signs a canonical payload (the host, under SSHSIG namespace `pijul-http-login`) with a
 registered SSH key and `POST`s the signature to `/login/ssh`, in exchange for a 24-hour bearer token.
-So HTTPS push authentication is keyed off the **same SSH public key** a user would otherwise use for
-SSH push, not off their password, and `bearer_user` returns `None` (anonymous) rather than an error
-when the header is absent — which is why a plain, unauthenticated `pijul clone` of a public repository
-over HTTPS worked in the phase-1 stand-up: reads default to anonymous, writes presumably do not.
-
-**What is not yet known:** whether the `pijul` CLI performs this `/login/ssh` exchange itself when a
-push is attempted (transparent to the user, the way an SSH client just uses its agent), or whether a
-user must obtain and configure the bearer token some other way before `pijul push` over HTTPS works
-at all. This is exactly the kind of protocol detail gate 2's own doctrine says to observe rather than
-infer ("discovering which steps are load-bearing is a primary output of this gate"). `test/gate2-flows.sh`
-currently attempts a bare `pijul push` with no credential setup; if the client does not handle this
-automatically, the script needs an SSH keypair added to the test user's account and a `/login/ssh`
-exchange added before the push step, and if it does, that is itself worth recording as an undocumented
-but load-bearing piece of upstream's design.
+So even for the read-only case, authentication is keyed off the **same SSH public key** a user would
+otherwise use for SSH push, not off their password. **Still not exercised by any test in this
+package** — see `docs/PACKAGING-NOTES.md` "Still open".
 
 ## Gate 3 risk, found ahead of time and NOT yet resolved: a live backup may race a live push
 
