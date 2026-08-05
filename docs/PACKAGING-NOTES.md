@@ -59,11 +59,48 @@ ability to push to the instance at all.
   bash scans for quote balance inside the braces independently of the outer quoting context. Cost a
   real debugging cycle before being traced to that one character.
 
-### Still open
+---
 
-- The SSH push path itself is not yet exercised by any test in this package. `test/gate2-flows.sh`'s
-  push/pull leg currently only proves HTTPS clone works and correctly does not attempt to push over
-  HTTPS. An SSH-based push test is the next real gap, not yet closed.
+## 2026-08-05, gate 3 (restore) and the SSH push leg, both closed
+
+### VERIFIED: gate 3, real backup and real restore, against real gate-2 data
+
+Baseline captured against the live install with genuine registered users and repositories (11
+users, 3 repositories, 4 tokens), not a freshly seeded instance. A real `cloudron backup create`,
+then a real `cloudron restore` from that backup:
+
+- All three secrets (`pbkdf2_password`, `pbkdf2_salt`, `ssh_host_ed25519_key`) sha256-identical
+  before and after.
+- Mode and ownership intact (`600 cloudron:cloudron`) post-restore.
+- Boot log carries the explicit `==> existing X found, keeping it` line added earlier this round
+  specifically so this invariant would be provable from the container's own log, not only an
+  external hash diff.
+- New container ID confirms a genuine recreation, not merely a restart.
+
+### VERIFIED: SSH push, end to end, with realistic mixed content
+
+**Closes the "still open" item below.** A repository created via the API, an SSH key registered
+through `POST /api/settings/ssh/add` (payload: `key`, the raw public key text, plus the same CSRF
+`token` mechanism as repository creation), a change recorded and signed against that key via an
+`ssh-agent` holding it, then pushed over `ssh://<user>@<host>:<port>/<user>/<repo>`.
+
+Two mechanical things worth keeping, not just the pass/fail:
+
+- **`pijul push` over SSH prompts interactively to learn an unknown host key** ("Learn it (y/N)?"),
+  which needs a real pseudo-terminal to answer; piping `y` to plain stdin does not satisfy it, only
+  a `script -qefc` (or equivalent pty) wrapper does. Same shape as gotcha #177's `cloudron clone`
+  port-binding prompt, different tool.
+- **`pijul record` needs `SSH_AUTH_SOCK`.** Changes are signed by the same SSH identity used for
+  push, so recording without an agent holding that key fails outright
+  (`SSH agent error: Environment variable 'SSH_AUTH_SOCK' not found`), silently if stderr is
+  discarded — an earlier attempt masked this by redirecting to `/dev/null` and produced no change to
+  push at all, no error visible.
+
+Content used was a real 13-file mixed text/binary tree (borrowed from the Lore round's own test
+fixtures, `Lore/files.zip` plus one `.webp` screenshot), not a single placeholder file. Every checked
+file, including the binary image, came back sha256-identical after push then a separate HTTPS clone —
+this is the "verify at the level of the data" requirement gate 2's own doctrine asks for, not just
+presence.
 
 ---
 

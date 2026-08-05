@@ -262,7 +262,44 @@ the load-bearing variable for a memory-mapped store, not request count. The gate
 touch several distinct repositories, not the same one repeatedly, or the loaded figure will
 understate a real multi-repository instance.
 
+## Gate 2: functional flows, against the real throwaway install
+
+Run 2026-08-05, `test/gate2-flows.sh`, 8/8 pass on the final run. Path: registration → email
+confirmation (via the `tokens` table, no live inbox) → sign-in → repository creation
+(`POST /api/settings/repo/add`) → SSH push of a real 13-file mixed text/binary tree → HTTPS clone
+of the same repository → sha256-identical on every checked file, including the binary → `nest-rank`
+observed running from its own log.
+
+| Invariant | Proof |
+| --- | --- |
+| registration | `303` redirect, user row survives (email send succeeded) |
+| confirmation | `Location: /<login>` (not `/`, which is the silent-failure branch), `email_is_invalid` NULL |
+| sign-in | `303` redirect on `POST /login` |
+| repo creation | `200` on `POST /api/settings/repo/add`, DB row present |
+| HTTPS push | correctly refused (404) — read-only by design, not a defect |
+| SSH push | 13 files land; every checked file, including a `.webp` binary, sha256-identical after push then a separate HTTPS clone |
+| `nest-rank` | at least one `"nest-rank starting"` log line observed |
+
+## Gate 3: update and restore survival
+
+Run 2026-08-05, against real data (11 users, 3 repositories, 4 tokens at baseline, not a freshly
+seeded instance).
+
+| Invariant | Proof |
+| --- | --- |
+| secret sha256 | `pbkdf2_password`, `pbkdf2_salt`, `ssh_host_ed25519_key` all byte-identical, real `cloudron backup create` then real `cloudron restore` |
+| secret mode | `600 cloudron:cloudron`, re-asserted post-restore |
+| boot path | explicit `==> existing X found, keeping it` log line present |
+| container | new container ID post-restore, confirming genuine recreation not a restart |
+| health | front page `200` from outside the rig after restore |
+
+**Not yet run:** the update leg proper (two versions, `cloudron update` between them) — the secret
+survival half of it was already demonstrated in gate 0 (`1.0.0-1` → `1.0.0-2`), but data-count
+survival across an update specifically has not. The gate 3 backup-race risk above (`sanakirja`
+racing a live backup) also remains untested: it needs a concurrent push-during-backup harness, not
+yet built.
+
 ## Gate ladder
 
-Not yet run past gate 0's rendering step. Gates 1 to 4 execute against the shipping digest and their
-evidence lands here.
+Gates 0 to 3 have real evidence above. Gate 4 (memory) not yet run; its precondition (the
+memory-mapped-store counter selection) is already settled above, ahead of measurement.
