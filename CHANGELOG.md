@@ -1,3 +1,10 @@
+[1.1.0]
+
+- Update pijul-nest 174 -> 224
+- Routine features and fixes from upstream
+- Pins NEST_STATE, NEST_CHANGE and NEST_DATE moved to ordinal 224
+- No packaging changes: auth topology, workspace layout and secrets handling unchanged; base and built images digest-pinned
+
 [1.0.0]
 
 - First release.

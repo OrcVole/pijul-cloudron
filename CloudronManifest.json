@@ -3,8 +3,8 @@
   "manifestVersion": 2,
   "title": "Pijul Nest",
   "tagline": "Repository hosting for the Pijul version control system",
-  "version": "1.0.0",
-  "upstreamVersion": "174",
+  "version": "1.1.0",
+  "upstreamVersion": "224",
   "description": "file://DESCRIPTION.md",
   "changelog": "file://CHANGELOG.md",
   "website": "https://pijul.org",
@@ -13,6 +13,9 @@
   "packagerName": "OrcVole",
   "packagerUrl": "https://github.com/OrcVole/pijul-cloudron",
   "icon": "file://logo.png",
+  "iconUrl": "https://raw.githubusercontent.com/OrcVole/pijul-cloudron/main/logo.png",
+  "mediaLinks": ["https://raw.githubusercontent.com/OrcVole/pijul-cloudron/main/screenshots/repo-file-browser.png", "https://raw.githubusercontent.com/OrcVole/pijul-cloudron/main/screenshots/login-page.png"],
+  "documentationUrl": "https://github.com/OrcVole/pijul-cloudron",
   "tags": [
     "git",
     "hosting",
@@ -38,5 +41,5 @@
     }
   },
   "postInstallMessage": "file://POSTINSTALL.md",
-  "dockerImage": "ghcr.io/orcvole/pijul-cloudron@sha256:f9ebdc7c68c5d4b3ecad25ee5cf552a532abac4409ee306aafbcb368ecadb053"
+  "dockerImage": "ghcr.io/orcvole/pijul-cloudron@sha256:01f3b9e121eb49a8b05ec117bf159f5e3651b19e344d51c682bc75e79bfb8775"
 }
