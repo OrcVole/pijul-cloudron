@@ -18,8 +18,9 @@
 # (`pijul log` succeeds, not just `pijul clone`, since a torn root page can
 # leave a store that clones but fails to log or check).
 #
-# Usage: CLOUDRON_HOST=<ssh-alias> test/gate3-backup-race.sh <base-url> <app-fqdn> [trials]
+# Usage: CLOUDRON_SERVER=my.example.com CLOUDRON_HOST=<ssh-alias> test/gate3-backup-race.sh <base-url> <app-fqdn> [trials]
 set -uo pipefail
+: "${CLOUDRON_SERVER:?set CLOUDRON_SERVER to the Cloudron you are gating, e.g. my.example.com; this suite never uses the CLI default profile}"
 
 CLOUDRON_HOST="${CLOUDRON_HOST:?set CLOUDRON_HOST to the ssh alias for the rig, e.g. myrig}"
 BASE="${1:?usage: gate3-backup-race.sh <base-url> <app-fqdn> [trials]}"
@@ -112,7 +113,7 @@ for i in $(seq 1 "$TRIALS"); do
     ) &
     push_pid=$!
     sleep 1
-    script -qefc "cloudron backup create --app $APP" /dev/null > "$WORK/backup-$i.log" 2>&1 &
+    script -qefc "cloudron --server $CLOUDRON_SERVER backup create --app $APP" /dev/null > "$WORK/backup-$i.log" 2>&1 &
     backup_pid=$!
     wait "$push_pid"
     wait "$backup_pid"
@@ -124,7 +125,7 @@ for i in $(seq 1 "$TRIALS"); do
         # Backup ids contain dots (the app's semver, e.g. _v1.0.0_), which an
         # earlier version of this pattern excluded, truncating every id at the
         # first dot and producing an id that never matched a real backup.
-        last_race_backup="$(script -qefc "cloudron backup list --app $APP" /dev/null 2>/dev/null \
+        last_race_backup="$(script -qefc "cloudron --server $CLOUDRON_SERVER backup list --app $APP" /dev/null 2>/dev/null \
             | grep -oE '^app_[A-Za-z0-9_.-]+' | head -1)"
         echo "    backup finished during/around the push (id: ${last_race_backup:-unknown})"
     else
@@ -139,7 +140,7 @@ if [[ -z "$last_race_backup" ]]; then
 fi
 
 say "restore from the last race-window backup and check the repository, not just its presence"
-script -qefc "cloudron restore --app $APP --backup $last_race_backup" /dev/null > "$WORK/restore.log" 2>&1
+script -qefc "cloudron --server $CLOUDRON_SERVER restore --app $APP --backup $last_race_backup" /dev/null > "$WORK/restore.log" 2>&1
 if ! grep -qi "restored" "$WORK/restore.log"; then
     bad "restore did not report success:"
     tail -5 "$WORK/restore.log" | sed 's/^/  /'
