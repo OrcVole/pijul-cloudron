@@ -1,3 +1,9 @@
+[1.1.1]
+
+- Upstream pijul-nest 224 to 303
+- Routine code updates across API and UI with no schema, migration or auth changes
+- No upgrade steps or new settings required
+
 [1.1.0]
 
 - Update pijul-nest 174 -> 224
