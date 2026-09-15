@@ -1,8 +1,10 @@
-[1.1.1]
+[1.2.0]
 
 - Upstream pijul-nest 224 to 303
 - Routine code updates across API and UI with no schema, migration or auth changes
 - No upgrade steps or new settings required
+- Labelled a minor rather than a patch on purpose: upstream is not versioned with release notes,
+  so the span was assessed from the file-level diff of 79 changes rather than from what each one says
 
 [1.1.0]
 
