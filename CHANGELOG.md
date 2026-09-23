@@ -1,3 +1,16 @@
+[1.2.1]
+
+- Upstream pijul-nest 303 to 314 (ten changes, 2026-09-04 to 2026-09-23).
+- Safer pushes: a failed push no longer leaves partial state behind, and writes to a repository are
+  now serialised inside the Nest.
+- CI jobs are stopped immediately and visibly when killed, and each job's vulnerability scan is now
+  summarised by severity in the job list. This adds one database migration (`job_scan_severity`),
+  applied automatically on first start.
+- Review fixes: approving a patch twice is harmless, landed patches are marked, and change pages
+  handle deleted directories.
+- Base image cloudron/base 5.0.0 to 5.1.0: the Ubuntu 24.04.4 point release, with its OS security
+  updates. The web interface now runs on Node.js 24.19.0 (was 22.14.0), which is what 5.1.0 ships.
+
 [1.2.0]
 
 - Upstream pijul-nest 224 to 303

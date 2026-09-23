@@ -39,4 +39,4 @@ export PRO_STORAGE_BYTES="${NEST_STORAGE_BYTES:-107374182400}"
 #   STRIPE_*             - billing. The module's own words: "Set to null to disable billing."
 #   ZULIP_API_KEY        - notifications.
 
-exec /usr/local/node-22.14.0/bin/node /app/code/ui
+exec /usr/local/node-24.19.0/bin/node /app/code/ui

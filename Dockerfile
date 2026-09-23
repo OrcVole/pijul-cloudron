@@ -12,7 +12,7 @@
 # There is no GitHub mirror; the Nest lives only on Pijul's own Nest, so a pijul
 # client is a build dependency before anything else can happen.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM cloudron/base:5.0.0@sha256:04fd70dbd8ad6149c19de39e35718e024417c3e01dc9c6637eaf4a41ec4e596c AS fetch
+FROM cloudron/base:5.1.0@sha256:1c0666c9abe9e2090d33686826d4e97769b799124573118d41e0d7485135748e AS fetch
 
 ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/opt/rust \
@@ -37,9 +37,9 @@ RUN cargo install pijul --version '~1.0.0-beta' --locked
 # dependencies, then panics in pijul-core 1.0.0-beta.20 at change.rs:1663 deserialising
 # a dependency whose file is not on disk (`IoHash { err: NotFound, hash: 2QMA3JQ... }`).
 # `--state` produces exactly the tree we want and exits 0. Verified both ways.
-ARG NEST_STATE=KG3EX7SOFE5FJMZM3MVBSTHLU3NV6UDDW7DO4QXZQTFR7NVGCTUQC
-ARG NEST_CHANGE=WWHAOKMTRIREJUHU3BFM37INTQDPSCZJ2PLPMJCLDKXBIAZSFO2AC
-ARG NEST_DATE=2026-09-14
+ARG NEST_STATE=7LOI6GHPF57375OXKX35VZCPV7NT4KPZVLFCRJ27HITOANTR5C6QC
+ARG NEST_CHANGE=GDF5NRXWPKSIKTTOMAGB5ISBGQOBNUT2Y6UWEQLEMOA4NN4HIFNQC
+ARG NEST_DATE=2026-09-23
 ENV HOME=/tmp
 RUN pijul clone --state "${NEST_STATE}" https://nest.pijul.com/pijul/nest /src \
     && cd /src \
@@ -52,7 +52,7 @@ RUN pijul clone --state "${NEST_STATE}" https://nest.pijul.com/pijul/nest /src \
 # package, so no Nix is involved. Verified: the whole workspace builds in about a
 # minute with plain cargo.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM cloudron/base:5.0.0@sha256:04fd70dbd8ad6149c19de39e35718e024417c3e01dc9c6637eaf4a41ec4e596c AS build
+FROM cloudron/base:5.1.0@sha256:1c0666c9abe9e2090d33686826d4e97769b799124573118d41e0d7485135748e AS build
 
 ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/opt/rust \
@@ -77,6 +77,9 @@ RUN curl -fsSL https://sh.rustup.rs -o /tmp/rustup.sh \
 # its development shell.
 RUN cargo install wasm-pack --locked
 
+# cloudron/base 5.1.0 ships Node 24.19.0 and, unlike 5.0.0 (Node 22.14.0), does not put it on PATH
+# (field guide #278). Name it explicitly here and in bin/ui-start.sh; the runtime stage asserts it.
+ENV PATH=/usr/local/node-24.19.0/bin:$PATH
 # pnpm is not on the base's PATH, but corepack is. Pinned rather than @latest so a
 # rebuild months from now resolves the same package manager.
 RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
@@ -151,7 +154,7 @@ RUN grep -rlZ 'TO pijul' migrations | xargs -0 -r sed -i 's/\bTO pijul\b/TO CURR
 # cloudron/base resolves libsodium, libssl, libcrypto, libgcc, libm and libc, and
 # nothing else. diesel-cli needs libpq, which the base already carries.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM cloudron/base:5.0.0@sha256:04fd70dbd8ad6149c19de39e35718e024417c3e01dc9c6637eaf4a41ec4e596c
+FROM cloudron/base:5.1.0@sha256:1c0666c9abe9e2090d33686826d4e97769b799124573118d41e0d7485135748e
 
 RUN mkdir -p /app/code /app/data
 WORKDIR /app/code
@@ -172,6 +175,12 @@ COPY supervisor/nest.conf /etc/supervisor/conf.d/nest.conf
 COPY supervisor/supervisord.conf /app/code/supervisord.conf
 
 RUN chmod +x /app/code/start.sh /app/code/bin/*
+
+# Gate: the node that bin/ui-start.sh execs must exist on this base, and the built UI must load under it.
+# A base bump that moves node fails the BUILD, not the first boot.
+RUN node_bin="$(grep -oE '/usr/local/node-[0-9.]+/bin/node' /app/code/bin/ui-start.sh)" \
+    && test -x "$node_bin" && "$node_bin" --version \
+    && test -f /app/code/ui/index.js
 
 # CMD, never ENTRYPOINT: ENTRYPOINT breaks Cloudron's debug mode.
 CMD [ "/app/code/start.sh" ]
