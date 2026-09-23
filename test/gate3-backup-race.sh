@@ -23,6 +23,8 @@ set -uo pipefail
 : "${CLOUDRON_SERVER:?set CLOUDRON_SERVER to the Cloudron you are gating, e.g. my.example.com; this suite never uses the CLI default profile}"
 
 CLOUDRON_HOST="${CLOUDRON_HOST:?set CLOUDRON_HOST to the ssh alias for the rig, e.g. myrig}"
+# The rig user on haggis runs docker directly; on the Proving Ground it needs sudo (2026-09-23).
+RIG_DOCKER="${RIG_DOCKER:-docker}"
 BASE="${1:?usage: gate3-backup-race.sh <base-url> <app-fqdn> [trials]}"
 APP="${2:?usage: gate3-backup-race.sh <base-url> <app-fqdn> [trials]}"
 TRIALS="${3:-3}"
@@ -34,8 +36,8 @@ say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 ok()  { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 bad() { printf '  \033[31m✗\033[0m %s\n' "$*"; }
 
-CID="$(ssh "$CLOUDRON_HOST" "docker ps --filter label=fqdn=$APP -q" 2>/dev/null | head -1)"
-sql() { printf '%s\n' "$1" | ssh "$CLOUDRON_HOST" "docker exec -i $CID bash -c 'psql \"\$CLOUDRON_POSTGRESQL_URL\" -tA'"; }
+CID="$(ssh "$CLOUDRON_HOST" "$RIG_DOCKER ps --filter label=fqdn=$APP -q" 2>/dev/null | head -1)"
+sql() { printf '%s\n' "$1" | ssh "$CLOUDRON_HOST" "$RIG_DOCKER exec -i $CID bash -c 'psql \"\$CLOUDRON_POSTGRESQL_URL\" -tA'"; }
 
 say "setup: registered user, SSH key, one repository"
 LOGIN="race$$"
@@ -62,7 +64,7 @@ curl -s -b "$JAR" -c "$JAR" -X POST "$BASE/api/settings/repo/add" \
     --data-urlencode "name=$REPO" --data-urlencode "private=false" --data-urlencode "token=$csrf_token" -o /dev/null
 
 APP_HOST="$(printf '%s' "$BASE" | sed -E 's#https?://##')"
-SSH_PORT="$(ssh "$CLOUDRON_HOST" "docker port $CID 2222/tcp" | head -1 | sed -E 's/.*:([0-9]+)$/\1/')"
+SSH_PORT="$(ssh "$CLOUDRON_HOST" "$RIG_DOCKER port $CID 2222/tcp" | head -1 | sed -E 's/.*:([0-9]+)$/\1/')"
 
 podman rm -f gate3-race-agent >/dev/null 2>&1
 podman run -d --name gate3-race-agent -v "$WORK":/work:Z -v "$WORK":/keys:ro,Z localhost/pijul-toolchain:probe sleep 3600 >/dev/null
@@ -100,11 +102,16 @@ say "racing $TRIALS trial(s): backup create + push, concurrent"
 last_race_backup=""
 for i in $(seq 1 "$TRIALS"); do
     echo "  trial $i/$TRIALS"
-    podman exec -w /work/src gate3-race-agent bash -c "
+    # FIXED 2026-09-23: `pijul record` signs through the SSH agent, and without SSH_AUTH_SOCK (and
+    # HOME) it failed silently here, so every trial pushed NOTHING and the race tested nothing.
+    # The record must succeed, or the trial is void: check it.
+    rec_out="$(podman exec -e SSH_AUTH_SOCK="$AUTH_SOCK" -w /work/src gate3-race-agent bash -c "
+        export HOME=/tmp
         head -c 5000000 /dev/urandom | base64 >> bulk-$i.bin
         pijul add bulk-$i.bin >/dev/null 2>&1
-        pijul record -a -m 'race trial $i, ~5MB' >/dev/null 2>&1
-    "
+        pijul record -a -m 'race trial $i, ~5MB' 2>&1
+    ")"
+    printf '%s' "$rec_out" | grep -qi "error" && { bad "trial $i: pijul record failed: ${rec_out:0:160}"; exit 1; }
     (
         podman exec -e SSH_AUTH_SOCK="$AUTH_SOCK" -w /work/src gate3-race-agent bash -c "
             export HOME=/tmp
@@ -148,7 +155,7 @@ if ! grep -qi "restored" "$WORK/restore.log"; then
 fi
 ok "restore completed"
 
-NEW_CID="$(ssh "$CLOUDRON_HOST" "docker ps --filter label=fqdn=$APP -q" 2>/dev/null | head -1)"
+NEW_CID="$(ssh "$CLOUDRON_HOST" "$RIG_DOCKER ps --filter label=fqdn=$APP -q" 2>/dev/null | head -1)"
 for _ in $(seq 1 30); do
     [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$BASE/" 2>/dev/null)" == "200" ]] && break
     sleep 2
@@ -182,10 +189,55 @@ fi
 if [[ "$opens_cleanly" == "1" ]]; then
     src_hash="$(podman exec gate3-race-agent bash -c "sha256sum /work/src/bulk-${TRIALS}.bin 2>/dev/null | cut -d' ' -f1")"
     dst_hash="$(podman exec gate3-race-agent bash -c "sha256sum /work/verify/bulk-${TRIALS}.bin 2>/dev/null | cut -d' ' -f1")"
+    n_changes="$(printf '%s\n' "$log_out" | grep -c "^Change ")"
     if [[ -n "$src_hash" ]] && [[ "$src_hash" == "$dst_hash" ]]; then
         ok "last trial's ~5MB file sha256-identical after the race, restore, and re-clone"
+    elif [[ -z "$dst_hash" ]] && [[ "$n_changes" -eq $((TRIALS + 1)) ]]; then
+        # ADDED 2026-09-23 (1.2.1 gate): absent is not corrupt. The restored log is consistent and
+        # holds the initial change, the baseline and every trial but the last, so the snapshot was taken before the last push
+        # committed. That is a clean pre-push state, which a racing backup is allowed to capture.
+        # The durability leg below proves a push that finished BEFORE a backup is in it.
+        ok "last trial's push is not in this backup: the snapshot predates it (log consistent, ${n_changes} changes); not corruption"
     else
-        bad "last trial's bulk file does NOT match: src=$src_hash dst=$dst_hash -- this IS the risk this test exists to catch"
+        bad "last trial's bulk file does NOT match: src=$src_hash dst=$dst_hash, ${n_changes} change(s) in the log -- this IS the risk this test exists to catch"
+        opens_cleanly=0
+    fi
+fi
+
+# Durability leg (2026-09-23): a push that has FINISHED before a backup starts must be in that backup.
+# The race above cannot show this, because a missing last push there is a legitimate outcome.
+if [[ "$opens_cleanly" == "1" ]]; then
+    say "durability: push, wait, back up, restore, the push must be there"
+    podman exec -e SSH_AUTH_SOCK="$AUTH_SOCK" -w /work/src gate3-race-agent bash -c "
+        export HOME=/tmp
+        head -c 2000000 /dev/urandom | base64 > bulk-durable.bin
+        pijul add bulk-durable.bin >/dev/null 2>&1
+        pijul record -a -m 'durability check' >/dev/null 2>&1
+    "
+    dur_push="$(podman exec -e SSH_AUTH_SOCK="$AUTH_SOCK" -w /work/src gate3-race-agent bash -c "
+        export HOME=/tmp
+        script -qefc 'pijul push -a ssh://${LOGIN}@${APP_HOST}:${SSH_PORT}/${LOGIN}/${REPO}' /dev/null <<< y 2>&1
+    " | tr -d '\r' | tail -3)"
+    echo "  push said: ${dur_push:-<nothing>}"
+    sleep 30
+    # Is it on the server BEFORE the backup? Separates "push never landed" from "backup lost it".
+    podman exec -w /work gate3-race-agent bash -c "export HOME=/tmp; rm -rf /work/pre; pijul clone https://${APP_HOST}/${LOGIN}/${REPO} /work/pre >/dev/null 2>&1"
+    s0="$(podman exec gate3-race-agent bash -c "sha256sum /work/pre/bulk-durable.bin 2>/dev/null | cut -d' ' -f1")"
+    echo "  on the server before the backup: ${s0:-ABSENT}"
+    script -qefc "cloudron --server $CLOUDRON_SERVER backup create --app $APP" /dev/null > "$WORK/backup-durable.log" 2>&1
+    dur_backup="$(script -qefc "cloudron --server $CLOUDRON_SERVER backup list --app $APP" /dev/null 2>/dev/null | grep -oE '^app_[A-Za-z0-9_.-]+' | head -1)"
+    script -qefc "cloudron --server $CLOUDRON_SERVER restore --app $APP --backup $dur_backup" /dev/null > "$WORK/restore-durable.log" 2>&1
+    for _ in $(seq 1 30); do
+        [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$BASE/" 2>/dev/null)" == "200" ]] && break
+        sleep 2
+    done
+    podman exec -w /work gate3-race-agent bash -c "export HOME=/tmp; rm -rf /work/verify2; pijul clone https://${APP_HOST}/${LOGIN}/${REPO} /work/verify2 >/dev/null 2>&1"
+    s1="$(podman exec gate3-race-agent bash -c "sha256sum /work/src/bulk-durable.bin | cut -d' ' -f1")"
+    s2="$(podman exec gate3-race-agent bash -c "sha256sum /work/verify2/bulk-durable.bin 2>/dev/null | cut -d' ' -f1")"
+    if [[ -n "$s1" && "$s1" == "$s2" ]]; then
+        ok "a push completed 30 s before a backup survived backup + restore byte for byte"
+    else
+        bad "a completed push is missing or altered after backup + restore (src=$s1 dst=$s2)"
         opens_cleanly=0
     fi
 fi

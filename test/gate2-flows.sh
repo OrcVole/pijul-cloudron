@@ -22,6 +22,8 @@
 set -uo pipefail
 
 CLOUDRON_HOST="${CLOUDRON_HOST:?set CLOUDRON_HOST to the ssh alias for the rig, e.g. myrig}"
+# The rig user on haggis runs docker directly; on the Proving Ground it needs sudo (2026-09-23).
+RIG_DOCKER="${RIG_DOCKER:-docker}"
 
 # `pijul` runs inside the toolchain probe container rather than on the runner
 # host: the packaging rig is an ostree system (Bazzite) where installing
@@ -61,9 +63,9 @@ bad() { printf '  \033[31m✗\033[0m %s\n' "$*"; FAIL_TOTAL=$((FAIL_TOTAL+1)); }
 # query is piped in over stdin rather than interpolated into a shell -c string,
 # because a query embedded in nested local/ssh/docker/bash quoting is exactly
 # how the earlier version of this script silently mis-encoded a token.
-CID="$(ssh "$CLOUDRON_HOST" "docker ps --filter label=fqdn=$APP -q" 2>/dev/null | head -1)"
+CID="$(ssh "$CLOUDRON_HOST" "$RIG_DOCKER ps --filter label=fqdn=$APP -q" 2>/dev/null | head -1)"
 sql() {
-    printf '%s\n' "$1" | ssh "$CLOUDRON_HOST" "docker exec -i $CID bash -c 'psql \"\$CLOUDRON_POSTGRESQL_URL\" -tA'"
+    printf '%s\n' "$1" | ssh "$CLOUDRON_HOST" "$RIG_DOCKER exec -i $CID bash -c 'psql \"\$CLOUDRON_POSTGRESQL_URL\" -tA'"
 }
 
 say "flow: registration (exercises sendmail, rolls back the row on send failure)"
@@ -167,13 +169,17 @@ say "flow: repository creation (POST /api/settings/repo/add, CSRF-protected, ses
 REPO_NAME="gate2-repo-$$"
 settings_json="$(curl -s -b "$JAR" -c "$JAR" "$BASE/api/settings")"
 csrf_token="$(printf '%s' "$settings_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null)"
-if [[ -z "$csrf_token" ]]; then
-    bad "GET /api/settings returned no 'token' field; check the session is actually authenticated"
+login_seen="$(printf '%s' "$settings_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('login',''))" 2>/dev/null)"
+# UPDATED 2026-09-23: upstream dropped the API-level CSRF token (create_repo takes only the signed
+# session cookie; CSRF now lives in SvelteKit's form actions), so /api/settings no longer returns
+# a "token" field. Send it only when present, and prove the session instead by the login it names.
+if [[ "$login_seen" != "$LOGIN" ]]; then
+    bad "GET /api/settings did not return this session's login (got '${login_seen}'); the session is not authenticated"
 else
     create_status="$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -c "$JAR" -X POST "$BASE/api/settings/repo/add" \
         --data-urlencode "name=$REPO_NAME" \
         --data-urlencode "private=false" \
-        --data-urlencode "token=$csrf_token")"
+        ${csrf_token:+--data-urlencode "token=$csrf_token"})"
     repo_row="$(sql "SELECT id FROM repositories WHERE owner='${user_row}' AND name='${REPO_NAME}';" | tr -d ' \r')"
     if [[ "$create_status" == "200" ]] && [[ -n "$repo_row" ]]; then
         ok "repository created: $REPO_NAME (id=$repo_row)"
@@ -206,7 +212,7 @@ fi
 rm -rf "$WORK"
 
 say "flow: PageRank job runs (nest-rank, every 6h, exercises postgresql read+write)"
-rank_seen="$(ssh "$CLOUDRON_HOST" "docker logs $CID 2>&1 | grep -c 'nest-rank starting'" 2>/dev/null || echo 0)"
+rank_seen="$(ssh "$CLOUDRON_HOST" "$RIG_DOCKER logs $CID 2>&1 | grep -c 'nest-rank starting'" 2>/dev/null || echo 0)"
 if [[ "${rank_seen:-0}" -gt 0 ]]; then
     ok "nest-rank has run at least once (log evidence)"
 else
