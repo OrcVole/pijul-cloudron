@@ -92,7 +92,7 @@ status, not the build's. Take the verdict from `podman images`, or use `PIPESTAT
 started nginx with `-g "daemon off;"` while `nginx.conf` itself already set `daemon off;`. nginx
 rejects the directive given both ways:
 
-```
+```text
 nginx: [emerg] "daemon" directive is duplicate in /run/nest/nginx.conf:15
 ```
 

@@ -18,7 +18,7 @@ compensates by running `createuser pijul` in `preStart`.
 On any managed PostgreSQL, the application's role is typically `NOSUPERUSER NOCREATEROLE` and cannot
 create another role, so the very first migration fails:
 
-```
+```text
 Failed to run 2024-11-23-114911_diesel with: role "pijul" does not exist
 ```
 
@@ -44,7 +44,7 @@ Two lines in the README covering `wasm-pack build identicon --target web --out-d
 Reproducible with the current client, `pijul 1.0.0-beta.21`, against
 `https://nest.pijul.com/pijul/nest`:
 
-```
+```bash
 $ pijul clone --change SX4EP5B4JDSLV4SDIB2A43MJANAR66IHKRCK3KPNVLJIG4OCYY6QC https://nest.pijul.com/pijul/nest
 Repository created at ...
 pijul had a problem and crashed.
@@ -52,7 +52,7 @@ pijul had a problem and crashed.
 
 The crash report says:
 
-```
+```yaml
 Panic occurred in .../pijul-core-1.0.0-beta.20/src/change.rs at line 1663
 cause = called `Result::unwrap()` on an `Err` value: IoHash {
     err: Os { code: 2, kind: NotFound, message: "No such file or directory" },

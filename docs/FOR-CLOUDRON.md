@@ -8,7 +8,7 @@ thing that might make Cloudron better for this class of application, not as bug 
 `cloudron/base:5.0.0` resolved every dynamic dependency of a 52 MB Rust binary with no additional
 packages at all:
 
-```
+```bash
 $ ldd nest        # against a bare cloudron/base:5.0.0
     libsodium.so.23, libssl.so.3, libcrypto.so.3, libgcc_s.so.1, libm.so.6, libc.so.6
 ```

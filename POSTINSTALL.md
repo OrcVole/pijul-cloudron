@@ -8,7 +8,7 @@ yours.
 
 **Cloning over HTTPS** works immediately, no SSH needed:
 
-```
+```text
 pijul clone https://<your-domain>/<user>/<repo>
 ```
 
@@ -16,7 +16,7 @@ pijul clone https://<your-domain>/<user>/<repo>
 private repositories you are authenticated to, but not accepting a push. To push a change, clone
 and push over SSH instead, on the port you chose during install:
 
-```
+```text
 pijul clone ssh://<user>@<your-domain>:<port>/<user>/<repo>
 pijul push
 ```

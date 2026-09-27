@@ -199,7 +199,7 @@ is pure Rust. `libpq` is needed only for `diesel-cli`, and the base already ship
 **The API runs unprivileged.** Started as uid 1000 with `user` and `group` omitted from
 `config.toml` and SSH moved to 2222:
 
-```
+```text
 LISTEN 0 128 *:2222  users:(("nest",pid=1,fd=9))
 LISTEN 0 128 *:5000  users:(("nest",pid=1,fd=10))
 ```

@@ -14,7 +14,7 @@ this fills a real gap rather than duplicating one.
 
 Not yet published to the community app store. Until then:
 
-```
+```bash
 cloudron install --image ghcr.io/orcvole/pijul-cloudron:<tag>
 ```
 
