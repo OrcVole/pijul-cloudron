@@ -7,12 +7,16 @@
 # The upstream tree is neither versioned nor released, so the build is pinned to an
 # exact change hash. See docs/decisions/0001-versioning.md.
 
+# Node.js. cloudron/base 6.0.0 ships none, so the official image supplies the same 24.19.0 at the same
+# path the 5.1.0 base used (/usr/local/node-24.19.0), leaving bin/ui-start.sh untouched.
+FROM docker.io/library/node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS node
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1: the client, purely so the source can be fetched at all.
 # There is no GitHub mirror; the Nest lives only on Pijul's own Nest, so a pijul
 # client is a build dependency before anything else can happen.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM cloudron/base:5.1.0@sha256:1c0666c9abe9e2090d33686826d4e97769b799124573118d41e0d7485135748e AS fetch
+FROM docker.io/cloudron/base:6.0.0@sha256:9bed4c8fa880645f8e669041ee28febe941481d00e9445e3e5a5483cb541d09b AS fetch
 
 ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/opt/rust \
@@ -37,9 +41,9 @@ RUN cargo install pijul --version '~1.0.0-beta' --locked
 # dependencies, then panics in pijul-core 1.0.0-beta.20 at change.rs:1663 deserialising
 # a dependency whose file is not on disk (`IoHash { err: NotFound, hash: 2QMA3JQ... }`).
 # `--state` produces exactly the tree we want and exits 0. Verified both ways.
-ARG NEST_STATE=7LOI6GHPF57375OXKX35VZCPV7NT4KPZVLFCRJ27HITOANTR5C6QC
-ARG NEST_CHANGE=GDF5NRXWPKSIKTTOMAGB5ISBGQOBNUT2Y6UWEQLEMOA4NN4HIFNQC
-ARG NEST_DATE=2026-09-23
+ARG NEST_STATE=EKU6JV7NJTYKPKCJAZ2PGLKUOFFOQM3VAB7ZKTR4PUBTGBGNGXSAC
+ARG NEST_CHANGE=LCSUXC3X2NXI4YVUSFJFQORRLLGFQ4AA6JPS5DWXENMW4POGXASAC
+ARG NEST_DATE=2026-10-14
 ENV HOME=/tmp
 RUN pijul clone --state "${NEST_STATE}" https://nest.pijul.com/pijul/nest /src \
     && cd /src \
@@ -52,7 +56,7 @@ RUN pijul clone --state "${NEST_STATE}" https://nest.pijul.com/pijul/nest /src \
 # package, so no Nix is involved. Verified: the whole workspace builds in about a
 # minute with plain cargo.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM cloudron/base:5.1.0@sha256:1c0666c9abe9e2090d33686826d4e97769b799124573118d41e0d7485135748e AS build
+FROM docker.io/cloudron/base:6.0.0@sha256:9bed4c8fa880645f8e669041ee28febe941481d00e9445e3e5a5483cb541d09b AS build
 
 ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/opt/rust \
@@ -77,8 +81,13 @@ RUN curl -fsSL https://sh.rustup.rs -o /tmp/rustup.sh \
 # its development shell.
 RUN cargo install wasm-pack --locked
 
-# cloudron/base 5.1.0 ships Node 24.19.0 and, unlike 5.0.0 (Node 22.14.0), does not put it on PATH
-# (field guide #278). Name it explicitly here and in bin/ui-start.sh; the runtime stage asserts it.
+# Node 24.19.0 comes from the node stage (cloudron/base 6.0.0 has none), laid out as the old base had it,
+# with corepack, which the build needs for pnpm. Name the path explicitly here and in bin/ui-start.sh;
+# the runtime stage asserts it.
+COPY --from=node /usr/local/bin/node /usr/local/node-24.19.0/bin/node
+COPY --from=node /usr/local/lib/node_modules/corepack /usr/local/node-24.19.0/lib/node_modules/corepack
+RUN ln -s ../lib/node_modules/corepack/dist/corepack.js /usr/local/node-24.19.0/bin/corepack \
+    && /usr/local/node-24.19.0/bin/node --version
 ENV PATH=/usr/local/node-24.19.0/bin:$PATH
 # pnpm is not on the base's PATH, but corepack is. Pinned rather than @latest so a
 # rebuild months from now resolves the same package manager.
@@ -150,13 +159,15 @@ RUN grep -rlZ 'TO pijul' migrations | xargs -0 -r sed -i 's/\bTO pijul\b/TO CURR
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3: runtime.
-# The base satisfies the nest binary with no added packages: ldd against a bare
-# cloudron/base resolves libsodium, libssl, libcrypto, libgcc, libm and libc, and
-# nothing else. diesel-cli needs libpq, which the base already carries.
+# On cloudron/base 5.x the base satisfied the nest binary with no added packages. cloudron/base 6.0.0
+# no longer ships libsodium (ldd: "libsodium.so.23 => not found"), so libsodium23 is installed below;
+# libssl, libcrypto, libgcc, libm, libc and diesel-cli's libpq are still carried by the base.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM cloudron/base:5.1.0@sha256:1c0666c9abe9e2090d33686826d4e97769b799124573118d41e0d7485135748e
+FROM docker.io/cloudron/base:6.0.0@sha256:9bed4c8fa880645f8e669041ee28febe941481d00e9445e3e5a5483cb541d09b
 
-RUN mkdir -p /app/code /app/data
+RUN apt-get update && apt-get install -y --no-install-recommends libsodium23 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app/code /app/data
 WORKDIR /app/code
 
 COPY --from=build /src/target/release/nest       /app/code/bin/nest
@@ -176,10 +187,15 @@ COPY supervisor/supervisord.conf /app/code/supervisord.conf
 
 RUN chmod +x /app/code/start.sh /app/code/bin/*
 
-# Gate: the node that bin/ui-start.sh execs must exist on this base, and the built UI must load under it.
-# A base bump that moves node fails the BUILD, not the first boot.
+# Node for the runtime: the same version at the same path the 5.1.0 base supplied.
+COPY --from=node /usr/local/bin/node /usr/local/node-24.19.0/bin/node
+
+# Gate: the node that bin/ui-start.sh execs must exist, link cleanly on this base (ldd, no "not found")
+# and the built UI must be present. A base bump that moves node fails the BUILD, not the first boot.
 RUN node_bin="$(grep -oE '/usr/local/node-[0-9.]+/bin/node' /app/code/bin/ui-start.sh)" \
-    && test -x "$node_bin" && "$node_bin" --version \
+    && for b in /app/code/bin/nest /app/code/bin/nest-rank /app/code/bin/diesel; do \
+         if ldd "$b" | grep 'not found'; then echo "unresolved library in $b"; exit 1; fi; done \
+    && test -x "$node_bin" && ! ldd "$node_bin" | grep 'not found' && "$node_bin" --version \
     && test -f /app/code/ui/index.js
 
 # CMD, never ENTRYPOINT: ENTRYPOINT breaks Cloudron's debug mode.

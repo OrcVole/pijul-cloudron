@@ -1,3 +1,23 @@
+[1.3.0]
+
+- Upstream pijul-nest 314 to 334 (twenty changes, 2026-09-23 to 2026-10-14). Pinned to change
+  LCSUXC3X2NXI4YVUSFJFQORRLLGFQ4AA6JPS5DWXENMW4POGXASAC, state EKU6JV7NJTYKPKCJAZ2PGLKUOFFOQM3VAB7ZKTR4PUBTGBGNGXSAC
+  (2026-10-14). Upstream has no release notes; this is written from the change messages.
+- Sign-in by SSH key is tightened: the signature is now bound to a one-use challenge issued by the server
+  that names the account, and API clients can use the resulting bearer token. Single-use challenges are
+  tracked in memory, so a restart simply invalidates any challenge in flight.
+- Discussions: maintainers are notified when a discussion is opened, review comment counts show per author
+  on discussion patches, and the hunk-context view lists every hunk, ordered by full path, with additions,
+  deletions and moves titled.
+- CI: jobs can now run per system (`[systems]` in `pijul.toml`) on other runners, and a stopped job gets
+  SIGTERM before SIGKILL. CI stays disabled in this package.
+- Two database migrations, applied automatically on first start: `discussion_subscription_unique` (removes
+  duplicate discussion subscriptions, keeping the earliest, then makes each pair unique) and `job_system`
+  (adds a nullable column to `jobs`).
+- Base image cloudron/base 5.1.0 to 6.0.0 (Ubuntu 26.04). Base 6 ships no Node.js, so the web interface
+  now runs on Node.js 24.19.0 copied from the official node:24.19.0 image to the same path the old base
+  used (the version is unchanged).
+
 [1.2.1]
 
 - Upstream pijul-nest 303 to 314 (ten changes, 2026-09-04 to 2026-09-23).

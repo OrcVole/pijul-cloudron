@@ -18,6 +18,10 @@ a runtime layer either. For a Rust plus PostgreSQL application, the runtime stag
 That is worth advertising: the packaging documentation's Rust guidance is thin, and the practical
 answer here is better than the docs imply.
 
+Update, 2026-10-16: this held for 5.0.0 and 5.1.0 only. `cloudron/base` 6.0.0 no longer ships libsodium
+(`libsodium.so.23 => not found`), so the runtime stage now installs `libsodium23`; the other libraries
+still resolve from the base.
+
 ## 2. A managed-database class of failure that is invisible to local testing
 
 The Nest's migrations contain `GRANT ... TO <a hardcoded role>`. The `postgresql` addon's role is
