@@ -7,16 +7,16 @@
 # The upstream tree is neither versioned nor released, so the build is pinned to an
 # exact change hash. See docs/decisions/0001-versioning.md.
 
-# Node.js. cloudron/base 6.0.0 ships none, so the official image supplies the same 24.19.0 at the same
-# path the 5.1.0 base used (/usr/local/node-24.19.0), leaving bin/ui-start.sh untouched.
-FROM docker.io/library/node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS node
+# Node.js. cloudron/base 6.0.1 ships none, so the official image supplies the same 24.22.1 at the same
+# path the 5.1.0 base used (/usr/local/node-24.22.1), leaving bin/ui-start.sh untouched.
+FROM docker.io/library/node:24.22.1-bookworm-slim@sha256:2dd9a4f758e173b65fee15388f7706af6fb01ef50cf7a2c0538711d67a6981ae AS node
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1: the client, purely so the source can be fetched at all.
 # There is no GitHub mirror; the Nest lives only on Pijul's own Nest, so a pijul
 # client is a build dependency before anything else can happen.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM docker.io/cloudron/base:6.0.0@sha256:9bed4c8fa880645f8e669041ee28febe941481d00e9445e3e5a5483cb541d09b AS fetch
+FROM docker.io/cloudron/base:6.0.1@sha256:7b1e729960c3ca312d26e886917ba89483241bba0219ff292858e10d9d5768ee AS fetch
 
 ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/opt/rust \
@@ -56,7 +56,7 @@ RUN pijul clone --state "${NEST_STATE}" https://nest.pijul.com/pijul/nest /src \
 # package, so no Nix is involved. Verified: the whole workspace builds in about a
 # minute with plain cargo.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM docker.io/cloudron/base:6.0.0@sha256:9bed4c8fa880645f8e669041ee28febe941481d00e9445e3e5a5483cb541d09b AS build
+FROM docker.io/cloudron/base:6.0.1@sha256:7b1e729960c3ca312d26e886917ba89483241bba0219ff292858e10d9d5768ee AS build
 
 ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/opt/rust \
@@ -81,14 +81,14 @@ RUN curl -fsSL https://sh.rustup.rs -o /tmp/rustup.sh \
 # its development shell.
 RUN cargo install wasm-pack --locked
 
-# Node 24.19.0 comes from the node stage (cloudron/base 6.0.0 has none), laid out as the old base had it,
+# Node 24.22.1 comes from the node stage (cloudron/base 6.0.1 has none), laid out as the old base had it,
 # with corepack, which the build needs for pnpm. Name the path explicitly here and in bin/ui-start.sh;
 # the runtime stage asserts it.
-COPY --from=node /usr/local/bin/node /usr/local/node-24.19.0/bin/node
-COPY --from=node /usr/local/lib/node_modules/corepack /usr/local/node-24.19.0/lib/node_modules/corepack
-RUN ln -s ../lib/node_modules/corepack/dist/corepack.js /usr/local/node-24.19.0/bin/corepack \
-    && /usr/local/node-24.19.0/bin/node --version
-ENV PATH=/usr/local/node-24.19.0/bin:$PATH
+COPY --from=node /usr/local/bin/node /usr/local/node-24.22.1/bin/node
+COPY --from=node /usr/local/lib/node_modules/corepack /usr/local/node-24.22.1/lib/node_modules/corepack
+RUN ln -s ../lib/node_modules/corepack/dist/corepack.js /usr/local/node-24.22.1/bin/corepack \
+    && /usr/local/node-24.22.1/bin/node --version
+ENV PATH=/usr/local/node-24.22.1/bin:$PATH
 # pnpm is not on the base's PATH, but corepack is. Pinned rather than @latest so a
 # rebuild months from now resolves the same package manager.
 RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
@@ -159,11 +159,11 @@ RUN grep -rlZ 'TO pijul' migrations | xargs -0 -r sed -i 's/\bTO pijul\b/TO CURR
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3: runtime.
-# On cloudron/base 5.x the base satisfied the nest binary with no added packages. cloudron/base 6.0.0
+# On cloudron/base 5.x the base satisfied the nest binary with no added packages. cloudron/base 6.0.1
 # no longer ships libsodium (ldd: "libsodium.so.23 => not found"), so libsodium23 is installed below;
 # libssl, libcrypto, libgcc, libm, libc and diesel-cli's libpq are still carried by the base.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM docker.io/cloudron/base:6.0.0@sha256:9bed4c8fa880645f8e669041ee28febe941481d00e9445e3e5a5483cb541d09b
+FROM docker.io/cloudron/base:6.0.1@sha256:7b1e729960c3ca312d26e886917ba89483241bba0219ff292858e10d9d5768ee
 
 RUN apt-get update && apt-get install -y --no-install-recommends libsodium23 \
     && rm -rf /var/lib/apt/lists/* \
@@ -188,7 +188,7 @@ COPY supervisor/supervisord.conf /app/code/supervisord.conf
 RUN chmod +x /app/code/start.sh /app/code/bin/*
 
 # Node for the runtime: the same version at the same path the 5.1.0 base supplied.
-COPY --from=node /usr/local/bin/node /usr/local/node-24.19.0/bin/node
+COPY --from=node /usr/local/bin/node /usr/local/node-24.22.1/bin/node
 
 # Gate: the node that bin/ui-start.sh execs must exist, link cleanly on this base (ldd, no "not found")
 # and the built UI must be present. A base bump that moves node fails the BUILD, not the first boot.
