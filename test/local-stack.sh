@@ -88,12 +88,13 @@ check_status /register      400 "API route exists"
 check_status /theme-init.js 200 "adapter-node serves its own static files"
 check_status /fonts/iosevka/IosevkaTerm-Regular.woff2 200 "bundled web font"
 
+# cloudron/base 6 ships no ss (iproute2); netstat is there.
 say "processes and privileges"
-if $CRI exec "$APP" bash -lc 'ss -lntp 2>/dev/null | grep -q ":5000"'; then
+if $CRI exec "$APP" bash -lc '{ ss -lnt 2>/dev/null || netstat -lnt 2>/dev/null; } | grep -q ":5000 "'; then
     ok "API listening on 5000"
 else bad "API not listening on 5000"; fi
 
-if $CRI exec "$APP" bash -lc 'ss -lntp 2>/dev/null | grep -q ":2222"'; then
+if $CRI exec "$APP" bash -lc '{ ss -lnt 2>/dev/null || netstat -lnt 2>/dev/null; } | grep -q ":2222 "'; then
     ok "SSH listening on 2222"
 else bad "SSH not listening on 2222"; fi
 
@@ -112,6 +113,34 @@ leftover="$($CRI exec "$APP" bash -lc 'grep -rho "TO pijul" /app/code/migrations
 if [[ "$leftover" == "0" ]]; then
     ok "no hardcoded pijul grants survive in the image"
 else bad "$leftover hardcoded 'TO pijul' grants remain: first boot will fail on a real addon"; fi
+
+say "row-level security policies, which must not name the install's role"
+# A policy that names the role travels in every dump, and restoring under another
+# app ID fails on it (field guide B-RLSROLE). 1.3.2 moved them to PUBLIC.
+named="$($CRI exec "$PG" psql -U postgres -d nest -tAc \
+    "SELECT count(*) FROM pg_policies WHERE schemaname='public' AND roles <> '{public}'" | tr -d ' ')"
+total="$($CRI exec "$PG" psql -U postgres -d nest -tAc \
+    "SELECT count(*) FROM pg_policies WHERE schemaname='public'" | tr -d ' ')"
+if [[ "${total:-0}" -gt 0 && "$named" == "0" ]]; then
+    ok "all $total policies are TO PUBLIC"
+else bad "$named of ${total:-0} policies name a role"; fi
+
+# The decisive check: restore the dump where the install's role does not exist.
+$CRI exec "$PG" pg_dump -U postgres --no-owner --no-acl nest > "/tmp/pijul-local-dump.$$.sql"
+$CRI rm -f "${PG}2" >/dev/null 2>&1
+$CRI run -d --name "${PG}2" --network "$NET" \
+    -e POSTGRES_PASSWORD=local docker.io/library/postgres:16 >/dev/null
+until $CRI exec "${PG}2" pg_isready -q 2>/dev/null; do sleep 1; done
+$CRI exec -i "${PG}2" psql -U postgres -q -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+CREATE ROLE otherapp LOGIN PASSWORD 'local' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+CREATE DATABASE nest OWNER otherapp;
+SQL
+if restore_err="$($CRI exec -i "${PG}2" psql -U otherapp -d nest -q -v ON_ERROR_STOP=1 \
+        < "/tmp/pijul-local-dump.$$.sql" 2>&1 >/dev/null)"; then
+    ok "dump restores under another role (no B-RLSROLE)"
+else bad "dump does not restore under another role: $(grep -m1 ERROR <<<"$restore_err")"; fi
+$CRI rm -f "${PG}2" >/dev/null 2>&1
+rm -f "/tmp/pijul-local-dump.$$.sql"
 
 say "idempotency, which start.sh depends on for every boot"
 if $CRI restart "$APP" >/dev/null 2>&1; then

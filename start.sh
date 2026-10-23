@@ -95,6 +95,23 @@ DATABASE_URL="${CLOUDRON_POSTGRESQL_URL}" /app/code/bin/diesel migration run \
     --migration-dir /app/code/migrations \
     --config-file "${RUN}/diesel.toml"
 
+# Policies created by packages up to 1.3.1 name this install's role (or, after a restore,
+# an older app's role), which breaks every later restore under another app ID. Point them
+# at PUBLIC; idempotent, and a no-op once done. The Dockerfile explains why PUBLIC.
+echo "==> row-level security policies to PUBLIC"
+psql -X -q -t -A -v ON_ERROR_STOP=1 "${CLOUDRON_POSTGRESQL_URL}" <<'SQL'
+DO $$
+DECLARE p record; n int := 0;
+BEGIN
+    FOR p IN SELECT schemaname, tablename, policyname FROM pg_policies
+             WHERE schemaname = 'public' AND roles <> '{public}' LOOP
+        EXECUTE format('ALTER POLICY %I ON %I.%I TO PUBLIC', p.policyname, p.schemaname, p.tablename);
+        n := n + 1;
+    END LOOP;
+    RAISE NOTICE 'policies moved to PUBLIC: %', n;
+END $$;
+SQL
+
 # ── nginx ────────────────────────────────────────────────────────────────────
 # One public hostname, split by path between the API and the UI. Templated because
 # the SSH port is chosen by the operator at install time and shown to the user.

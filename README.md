@@ -57,6 +57,15 @@ there. All three are nullable upstream and all three are off:
 Private repository and storage quotas default to **zero** upstream, which is a hosted-service default
 that would give a self-hosted instance's users no private repositories at all. They are raised here.
 
+### Audit logs are not append-only here
+
+Upstream protects the channel, permission and authentication event logs with row-level security
+policies so that the application's database role can insert rows but never change or delete them. On
+Cloudron the application has a single database role, and that role owns the tables, so PostgreSQL does
+not apply the policies to it, and forcing them would not help: an owner can turn them off again. The
+policies are kept (applied to `PUBLIC`, so backups restore under any app ID) but they do not make the logs
+tamper-proof against a compromised application. Treat Cloudron's own backups as the durable record.
+
 ## Single sign-on
 
 Not supported, deliberately. Upstream authentication is the application's own, with PBKDF2 in

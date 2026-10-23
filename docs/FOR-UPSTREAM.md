@@ -86,6 +86,11 @@ pointing at `nest.nix` would prevent that entirely.
 
 ## 6. Small things
 
+- **The audit-log policies name a role** (`TO pijul`, 2026-06-22 `audit_improvements`). A policy keeps the
+  role it names, so a dump restored where that role is absent fails outright. On a managed database the
+  application's role also owns the tables, which exempts it from the policies unless they are forced. `TO
+  PUBLIC` keeps the intent where it applies and restores anywhere; real append-only needs a separate,
+  non-owning application role.
 - **`pbkdf2Iterations` defaults to `1`** in `nest.nix`. Given the option's own description says it
   must match between the API and the UI, a reader may take the default as a considered value rather
   than a placeholder.

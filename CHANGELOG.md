@@ -1,3 +1,15 @@
+[1.3.2]
+
+- Backups restore under any app ID again. The audit-log protection rules (row-level security policies on
+  channel, permission and auth events) named this install's database role, so every backup carried that
+  name and restoring it into a new app failed with `role "user..." does not exist`. They now apply to
+  PUBLIC, and existing installs are corrected automatically on start.
+- These rules never stopped the app itself from editing its audit logs: the app's role owns the tables,
+  and a single-role database cannot enforce append-only against its owner. That was true before this
+  release too; the README now says so.
+- Upstream unchanged: pijul-nest change LCSUXC3X2NXI4YVUSFJFQORRLLGFQ4AA6JPS5DWXENMW4POGXASAC, state
+  EKU6JV7NJTYKPKCJAZ2PGLKUOFFOQM3VAB7ZKTR4PUBTGBGNGXSAC, as in 1.3.0.
+
 [1.3.1]
 
 - Base image cloudron/base 6.0.0 to 6.0.1: Ubuntu security updates, including the removal of the
