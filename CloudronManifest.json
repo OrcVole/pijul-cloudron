@@ -41,5 +41,5 @@
     }
   },
   "postInstallMessage": "file://POSTINSTALL.md",
-  "dockerImage": "ghcr.io/orcvole/pijul-cloudron@sha256:d4bde2649f6ee42f5252e53614edb812f406d466a6dca81013fc97752ca41b52"
+  "dockerImage": "ghcr.io/orcvole/pijul-cloudron@sha256:b38cd82142b1c7c042f80fd85e7cd27f99048f5342c16f509ab6d7963f30918a"
 }
