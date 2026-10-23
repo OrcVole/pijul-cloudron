@@ -154,8 +154,19 @@ RUN wasm-pack build identicon --release --target web    --out-dir pkg \
 # valid grantee and the grants become no-ops, since the migrating role already owns
 # every table it just created. A pattern rather than a patch, so it survives
 # upstream adding more of them, which it does regularly.
-RUN grep -rlZ 'TO pijul' migrations | xargs -0 -r sed -i 's/\bTO pijul\b/TO CURRENT_USER/g' \
-    && test "$(grep -rho 'TO pijul' migrations | wc -l)" = "0"
+#
+# Row-level security policies are the exception: they go to PUBLIC, never CURRENT_USER.
+# CURRENT_USER resolves to this install's addon role (user<app-id>), the policy stores that
+# name, pg_dump writes it into every backup, and restoring under another app ID then fails
+# with `role "user<old-app-id>" does not exist` (field guide B-RLSROLE; production pijul was
+# down from it twice). The policies never restricted the app anyway: its role owns the
+# tables and RLS is not forced, so PUBLIC loses nothing. Existing installs are corrected in
+# start.sh.
+RUN grep -rlZ 'TO pijul' migrations | xargs -0 -r sed -i -E 's/\bFOR (ALL|SELECT|INSERT|UPDATE|DELETE) TO pijul\b/FOR \1 TO PUBLIC/g' \
+    && grep -rlZ 'TO pijul' migrations | xargs -0 -r sed -i 's/\bTO pijul\b/TO CURRENT_USER/g' \
+    && test "$(grep -rho 'TO pijul' migrations | wc -l)" = "0" \
+    && test "$(grep -rhoE 'FOR (ALL|SELECT|INSERT|UPDATE|DELETE) TO CURRENT_USER' migrations | wc -l)" = "0" \
+    && test "$(grep -rhoE 'FOR (ALL|SELECT|INSERT|UPDATE|DELETE) TO PUBLIC' migrations | wc -l)" -gt 0
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3: runtime.
