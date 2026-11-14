@@ -1,3 +1,23 @@
+[1.4.0]
+
+- Upstream pijul-nest 334 to 352 (seventeen changes, 2026-10-14 to 2026-11-13). Pinned to change
+  F6ZXR73AIXVRTZHHR4JOAB2FFA42UTYB7JYWPIXCRDHHIT5PFRKAC, state MGIZXVUEKTLG2KQSATVRFRUNTWF2DXKHM67AJIIUJZR7LLOBLOTAC
+  (2026-11-13). Upstream has no release notes; this is written from the change messages.
+- Discussions: the list shows newest first with closed ones included, pages with Newer and Older buttons,
+  and marks each row open or closed. Discussion and change pages list the files each patch touches. Discussion
+  pages now update live when a discussion is closed, a patch lands or a comment arrives; before, the browser
+  waited on the page's own refresh.
+- Review: comment text keeps its formatting (lists, quotes, code, tables), comments can be stepped through
+  from a floating navigator and linked to directly, and reviews appear in the discussion timeline.
+- Pushing: a push with `--to-channel source:target` opens its discussion on the source channel, pushing to a
+  new discussion is only refused when an open discussion has the same title, and a read-only
+  `<channel>+open` view lets a client skip patches already under review.
+- CI: a new job now stops older unfinished jobs on the same channel, and a job is no longer shown as failed
+  when its stream is merely slow. CI stays disabled in this package.
+- No database migrations and no new settings: nothing to do on upgrade.
+- Under the hood: the Nest now builds against pijul-core 1.0.0-beta.27 and a newer HTTP client with a
+  different TLS stack.
+
 [1.3.2]
 
 - Backups restore under any app ID again. The audit-log protection rules (row-level security policies on

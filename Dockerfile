@@ -41,9 +41,9 @@ RUN cargo install pijul --version '~1.0.0-beta' --locked
 # dependencies, then panics in pijul-core 1.0.0-beta.20 at change.rs:1663 deserialising
 # a dependency whose file is not on disk (`IoHash { err: NotFound, hash: 2QMA3JQ... }`).
 # `--state` produces exactly the tree we want and exits 0. Verified both ways.
-ARG NEST_STATE=EKU6JV7NJTYKPKCJAZ2PGLKUOFFOQM3VAB7ZKTR4PUBTGBGNGXSAC
-ARG NEST_CHANGE=LCSUXC3X2NXI4YVUSFJFQORRLLGFQ4AA6JPS5DWXENMW4POGXASAC
-ARG NEST_DATE=2026-10-14
+ARG NEST_STATE=MGIZXVUEKTLG2KQSATVRFRUNTWF2DXKHM67AJIIUJZR7LLOBLOTAC
+ARG NEST_CHANGE=F6ZXR73AIXVRTZHHR4JOAB2FFA42UTYB7JYWPIXCRDHHIT5PFRKAC
+ARG NEST_DATE=2026-11-13
 ENV HOME=/tmp
 RUN pijul clone --state "${NEST_STATE}" https://nest.pijul.com/pijul/nest /src \
     && cd /src \

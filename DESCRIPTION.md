@@ -1,4 +1,4 @@
-<upstream>314</upstream>
+<upstream>352</upstream>
 
 The Nest is the hosting platform for [Pijul](https://pijul.org), a distributed version control system
 built on a sound theory of patches rather than on snapshots and three-way merges.

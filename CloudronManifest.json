@@ -3,8 +3,8 @@
   "manifestVersion": 2,
   "title": "Pijul Nest",
   "tagline": "Repository hosting for the Pijul version control system",
-  "version": "1.3.2",
-  "upstreamVersion": "334",
+  "version": "1.4.0",
+  "upstreamVersion": "352",
   "description": "file://DESCRIPTION.md",
   "changelog": "file://CHANGELOG.md",
   "website": "https://pijul.org",
@@ -41,5 +41,5 @@
     }
   },
   "postInstallMessage": "file://POSTINSTALL.md",
-  "dockerImage": "ghcr.io/orcvole/pijul-cloudron@sha256:b38cd82142b1c7c042f80fd85e7cd27f99048f5342c16f509ab6d7963f30918a"
+  "dockerImage": "ghcr.io/orcvole/pijul-cloudron@sha256:04ed593b77086417f7ad7c78ff9e46df24828aa98b4bfc84681c64a53927bc73"
 }
